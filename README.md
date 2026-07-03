@@ -68,25 +68,29 @@ session — so nothing is left behind.
 
 ## Requirements
 
-- **Claude Fable 5** access (the consultant agent runs `model: fable`; effort defaults to
-  `high` and is tunable — see below).
+- **Claude Fable 5** access (the consultant agent runs `model: fable`; `install.sh` prompts
+  for effort, recommended `medium` — see below).
 - **A harness that supports warm subagent-resume** (`SendMessage` to a spawned agent). The
   warm review resumes the plan agent; there is **no cold fallback**. If resume isn't available,
   `/fable` detects it at preflight and stops rather than half-running.
 
 ## Tuning Fable's effort
 
-Fable's reasoning depth is set by the `effort:` frontmatter in `agents/fable-planner.md`,
-which defaults to `high`. To trade cost against depth, install with the `FABLE_EFFORT` env
-var — it's written into the installed agent's frontmatter:
+Fable's reasoning depth is set by the `effort:` frontmatter in the installed
+`fable-planner` agent. `install.sh` **prompts** for it and writes your choice in —
+**recommended: medium** (raise to `high`/`xhigh` when you want maximum judgment on a rare,
+high-leverage consult):
 
 ```
-FABLE_EFFORT=xhigh ./fable-consult/install.sh   # low | medium | high | xhigh | max
+./fable-consult/install.sh                      # prompts: low | medium | high | xhigh | max
+FABLE_EFFORT=high ./fable-consult/install.sh     # or set it to skip the prompt / for CI
 ```
 
 Re-run with a new value to change it. (One effort governs both Fable engagements — the plan
 consult and the warm-review resume — which is correct: it must stay constant across a single
-conversation, since changing effort mid-conversation invalidates the message cache.)
+conversation, since changing effort mid-conversation invalidates the message cache. If you
+install via `/plugin` instead of `install.sh`, the shipped default is `medium`; edit the
+agent's `effort:` frontmatter to change it.)
 
 ## What's inside
 

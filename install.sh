@@ -9,14 +9,32 @@
 # User skills/agents are not namespaced, so the command is `/fable` and the
 # agents resolve by bare name (which is what SKILL.md and fable-planner.md use).
 #
-# FABLE_EFFORT (low|medium|high|xhigh|max, default high) tunes Fable's reasoning
-# depth: it is written into the installed fable-planner agent's `effort:` frontmatter.
-# Re-run install.sh with a new value to change it.
+# Fable's reasoning effort (low|medium|high|xhigh|max) is written into the installed
+# fable-planner agent's `effort:` frontmatter. install.sh prompts for it (recommended:
+# medium); set the FABLE_EFFORT env var to skip the prompt (e.g. FABLE_EFFORT=high) or
+# for non-interactive installs. Re-run install.sh to change it.
 set -euo pipefail
+
+EFFORTS="low medium high xhigh max"
+# Precedence: FABLE_EFFORT env > interactive prompt > recommended default (medium).
+# Skips the prompt on a non-TTY (piped) install.
+choose_effort() {
+  if [ -n "${FABLE_EFFORT:-}" ]; then printf '%s' "$FABLE_EFFORT"; return; fi
+  if [ ! -t 0 ]; then printf 'medium'; return; fi
+  local ans
+  while :; do
+    printf 'Fable reasoning effort? [low/medium/high/xhigh/max] (recommended: medium): ' >&2
+    read -r ans || { ans=medium; break; }
+    ans="${ans:-medium}"
+    case " $EFFORTS " in *" $ans "*) break ;; *) printf 'Invalid effort: %s\n' "$ans" >&2 ;; esac
+  done
+  printf '%s' "$ans"
+}
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-FABLE_EFFORT="${FABLE_EFFORT:-high}"
+FABLE_EFFORT="$(choose_effort)"
+case " $EFFORTS " in *" $FABLE_EFFORT "*) ;; *) echo "FABLE_EFFORT must be one of: $EFFORTS" >&2; exit 1 ;; esac
 
 mkdir -p "$CLAUDE/skills" "$CLAUDE/agents"
 

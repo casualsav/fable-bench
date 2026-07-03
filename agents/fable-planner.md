@@ -2,7 +2,7 @@
 name: fable-planner
 description: Fable 5 plan consultant for the /fable skill. Invoked once by /fable with a plan brief — task verbatim, intent, session constraints, file map, pasted load-bearing code, the driver's DRAFT PLAN, and 1–3 specific questions. Returns an ENDORSE/AMEND/REPLACE verdict with plan, risks, checkpoints, assumptions. Resumed once at task end for the warm diff-review (SHIP/FIX-THEN-SHIP/RECONSULT).
 model: fable
-effort: high
+effort: medium
 tools: Read, Agent
 ---
 
