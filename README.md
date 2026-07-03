@@ -30,6 +30,17 @@ Run `/fable` on a nontrivial task and it drives this flow:
 
 Then invoke `/fable` on any task.
 
+## Uninstall
+
+```
+/plugin uninstall fable-consult
+/plugin marketplace remove casualsav/fable-consult
+```
+
+That removes the skill and its three agents from the plugin cache. `/fable` writes nothing
+persistent outside the plugin — its only runtime state is an in-session task checkpoint that
+lives and dies with the session — so nothing is left behind.
+
 ## Requirements
 
 - **Claude Fable 5** access (the consultant agent runs `model: fable` at `effort: high`).
