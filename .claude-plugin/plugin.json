@@ -1,0 +1,12 @@
+{
+  "name": "fable-consult",
+  "description": "On-demand /consult skill — get a Claude Fable 5 plan-consult plus an automatic warm diff-review on any task. You draft a plan, Fable critiques it, you execute, then the same Fable agent reviews the result. Opus drives; Fable consults.",
+  "version": "0.1.0",
+  "keywords": [
+    "consult",
+    "planning",
+    "code-review",
+    "fable",
+    "subagent"
+  ]
+}
