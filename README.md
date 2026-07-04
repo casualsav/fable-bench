@@ -4,8 +4,9 @@ An on-demand `/fable` skill for Claude Code: get a **Claude Fable 5 plan-consult
 task, then an **automatic warm diff-review** of the result. You drive; Fable consults.
 
 The philosophy: **you (Opus) hold full session context and do the work.** Fable 5 has stronger
-judgment but zero session context, so it's a consultant you touch exactly twice per `/fable`
-— one plan critique before you build, one warm review of the diff after. Never a third touch.
+judgment but zero session context, so it's a consultant you touch twice per `/fable`
+— one plan consult before you build, one warm review of the diff after — plus at most one
+exception-triggered mid-consult if a checkpoint or assumption Fable flagged fails mid-task.
 It's the plan-and-review discipline of a heavier "Opus-drives / Fable-consults" config,
 repackaged so **you decide when to invoke it** instead of it firing automatically.
 
@@ -15,9 +16,9 @@ Run `/fable` on a nontrivial task and it drives this flow:
 
 1. **Ground** — map the relevant code with `explore` workers (scaled to the task) and capture the project's test command.
 2. **Preflight** — confirm your harness can resume a subagent (the hard dependency below).
-3. **Draft + draft check** — you write a short plan; a self-test picks *critique-my-draft* vs *dual-plan*.
-4. **Plan consult** — Fable critiques the draft and returns a terse coded verdict (`ENDORSE / AMEND / REPLACE`).
-5. **Execute** — you build it, logging any deviations from the accepted plan.
+3. **Draft + draft check** — you write a short plan; a structural self-test (can you write the `REJECTED:` line?) picks *critique-my-draft*, *blind-sketch* (Fable sketches its approach before seeing your draft), or rarely *dual-plan*.
+4. **Plan consult** — Fable returns a terse coded verdict (`ENDORSE / AMEND / REPLACE`).
+5. **Execute** — you build it, logging deviations; if a Fable checkpoint or assumption fails, one warm mid-consult is allowed.
 6. **Warm review** — the *same* Fable agent is resumed to review the diff (`SHIP / FIX-THEN-SHIP / RECONSULT`).
 7. **Apply MUST-FIX, self-verify, ship** — no third consult.
 
@@ -69,7 +70,7 @@ session — so nothing is left behind.
 ## Requirements
 
 - **Claude Fable 5** access (the consultant agent runs `model: fable`; `install.sh` prompts
-  for effort, recommended `medium` — see below).
+  for effort, recommended `high` — see below).
 - **A harness that supports warm subagent-resume** (`SendMessage` to a spawned agent). The
   warm review resumes the plan agent; there is **no cold fallback**. If resume isn't available,
   `/fable` detects it at preflight and stops rather than half-running.
@@ -78,8 +79,11 @@ session — so nothing is left behind.
 
 Fable's reasoning depth is set by the `effort:` frontmatter in the installed
 `fable-planner` agent. `install.sh` **prompts** for it and writes your choice in —
-**recommended: medium** (raise to `high`/`xhigh` when you want maximum judgment on a rare,
-high-leverage consult):
+**recommended: high** — Anthropic's own default for nontrivial work, and `/fable` only fires
+on nontrivial work; Fable at medium buys little margin over the Opus driver (Fable-low is
+comparable to Opus-xhigh). Raise to `xhigh` for a rare, capability-critical consult. One honest caveat: thinking
+tokens bill at Fable's output rate ($50/MTok), so effort — not the visible reply caps — is
+the biggest cost dial in the system; `medium` is the legitimate lever if usage limits bite:
 
 ```
 ./fable-consult/install.sh                      # prompts: low | medium | high | xhigh | max
@@ -89,7 +93,7 @@ FABLE_EFFORT=high ./fable-consult/install.sh     # or set it to skip the prompt 
 Re-run with a new value to change it. (One effort governs both Fable engagements — the plan
 consult and the warm-review resume — which is correct: it must stay constant across a single
 conversation, since changing effort mid-conversation invalidates the message cache. If you
-install via `/plugin` instead of `install.sh`, the shipped default is `medium`; edit the
+install via `/plugin` instead of `install.sh`, the shipped default is `high`; edit the
 agent's `effort:` frontmatter to change it.)
 
 ## What's inside

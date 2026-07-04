@@ -11,21 +11,21 @@
 #
 # Fable's reasoning effort (low|medium|high|xhigh|max) is written into the installed
 # fable-planner agent's `effort:` frontmatter. install.sh prompts for it (recommended:
-# medium); set the FABLE_EFFORT env var to skip the prompt (e.g. FABLE_EFFORT=high) or
+# high); set the FABLE_EFFORT env var to skip the prompt (e.g. FABLE_EFFORT=high) or
 # for non-interactive installs. Re-run install.sh to change it.
 set -euo pipefail
 
 EFFORTS="low medium high xhigh max"
-# Precedence: FABLE_EFFORT env > interactive prompt > recommended default (medium).
+# Precedence: FABLE_EFFORT env > interactive prompt > recommended default (high).
 # Skips the prompt on a non-TTY (piped) install.
 choose_effort() {
   if [ -n "${FABLE_EFFORT:-}" ]; then printf '%s' "$FABLE_EFFORT"; return; fi
-  if [ ! -t 0 ]; then printf 'medium'; return; fi
+  if [ ! -t 0 ]; then printf 'high'; return; fi
   local ans
   while :; do
-    printf 'Fable reasoning effort? [low/medium/high/xhigh/max] (recommended: medium): ' >&2
-    read -r ans || { ans=medium; break; }
-    ans="${ans:-medium}"
+    printf 'Fable reasoning effort? [low/medium/high/xhigh/max] (recommended: high): ' >&2
+    read -r ans || { ans=high; break; }
+    ans="${ans:-high}"
     case " $EFFORTS " in *" $ans "*) break ;; *) printf 'Invalid effort: %s\n' "$ans" >&2 ;; esac
   done
   printf '%s' "$ans"
