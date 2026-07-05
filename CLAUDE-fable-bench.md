@@ -11,12 +11,15 @@ judgment. A typed `/fable` = run its draft discipline yourself, gate via
 - Delegate by DEFAULT past ~1 file / ~20 reasoned lines. Weighing whether
   it's "small enough to just do" means it isn't — spawn `coder`.
 - Loop: `explorer` audit fan-out (each slice read IN FULL) → per-worker specs
-  with disjoint file OWNERSHIP (one writer per file, ever) → parallel
-  `coder`/`engineer`, `test-writer` first on uncovered code → `reviewer` on
-  the FULL combined diff, cross-batch interactions included (personally read
-  the diff of any NEW user-facing behavior — delegate regression breadth,
-  never novelty) → `smoke-tester` against the live system when runtime
-  behavior changed → ship.
+  with disjoint file OWNERSHIP (one writer per file, ever; items that all
+  funnel through one hub file go to ONE worker as a multi-item spec, never
+  serial workers) → parallel `coder`/`engineer`, `test-writer` first on
+  uncovered code → `reviewer`: per-worker only when workers ran in parallel,
+  else ONE pass on the FULL combined diff, cross-batch interactions included
+  (personally read the diff of any NEW user-facing behavior — delegate
+  regression breadth, never novelty; worker-report **Concerns** are review
+  agenda, not commentary) → `smoke-tester` against the live system when
+  runtime behavior changed → ship.
 - You own git; workers never run git write commands.
 - Full execution mechanics: Read `skills/fable/SKILL.md` S5-alt once per
   session and follow it.

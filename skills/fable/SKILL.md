@@ -70,13 +70,22 @@ evidence) are what make delegation briefs good; vague specs make workers improvi
 each worker a self-contained spec: the files it OWNS (touch nothing else), the problem, the
 intended change, exact verify commands. **One writer per file, ever** — sequence anything
 that shares a file, or set `isolation: worktree` when ownership can't be split cleanly.
+**Hub-file batching:** when the batch's items all funnel through one hub file (a monolith
+daemon, a central router), don't serialize workers through it — give ONE worker a
+multi-item spec for the whole batch; extra workers enter only for files the hub never
+touches.
 **You own git:** workers never run git write commands (`stash`, `checkout --`, `reset`,
 `clean`, commit, push — a bare stash in a shared tree destroys other workers' in-flight
 edits); you stage and commit between batches, and `git add` new files before any deploy step
-that syncs tracked files. Gate EVERY worker result through `reviewer` before merging —
-you read verdicts, never raw diffs, with ONE exception: personally read the diff of any NEW
-user-facing behavior first-hand regardless of verdict. Delegate regression breadth, never
-novelty. REJECT means re-delegate with a tighter spec, not a fix-it argument with the
+that syncs tracked files. **Review cadence:** workers that ran in PARALLEL (worktrees or
+disjoint files) each gate through `reviewer` before you merge them; a SERIAL batch in one
+tree takes ONE `reviewer` pass over the combined diff at the end — same coverage, fewer
+spawns. Either way you read verdicts, never raw diffs, with ONE exception: personally read
+the diff of any NEW user-facing behavior first-hand regardless of verdict. Delegate
+regression breadth, never novelty. Treat each worker report's **Concerns** section as
+review agenda, not commentary — feed every named hazard to the `reviewer`/`smoke-tester`
+pass or rule on it yourself; workers self-flag exactly what specs miss. REJECT means
+re-delegate with a tighter spec, not a fix-it argument with the
 worker. The merged diff then gets the single S6 warm review as normal. Keep DEPENDENT chains
 inline: spawn overhead and lost shared context make sequential delegation slower than driving
 it yourself, and speed is the only reason this alt exists. (In long multi-phase sessions,
