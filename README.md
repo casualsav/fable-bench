@@ -1,7 +1,17 @@
-# fable-consult
+# fable-bench
 
-An on-demand `/fable` skill for Claude Code: get a **Claude Fable 5 plan-consult** on any
-task, then an **automatic warm diff-review** of the result. You drive; Fable consults.
+One repo, two modes, gated by who's driving the session (this is the LITE
+variant — no auto layer; consults are always on-demand):
+
+1. **Manual `/fable`** (any below-Fable driver): an on-demand **Claude Fable 5
+   plan-consult** on any task, then an **automatic warm diff-review** of the
+   result. You drive; Fable consults. Nothing fires unless you type it.
+2. **Lead playbook** (default whenever Fable itself is the driving model):
+   consults are suppressed as redundant — Fable specs, reviews, and ships;
+   the worker agents write the code. Same agents, same S5-alt mechanics.
+
+The installed CLAUDE.md block is ~24 lines and applies only to Fable-led
+sessions; below-Fable sessions ignore it and just have `/fable` available.
 
 The philosophy: **you (Opus) hold full session context and do the work.** Fable 5 has stronger
 judgment but zero session context, so it's a consultant you touch twice per `/fable`
@@ -40,14 +50,14 @@ Three additions from the execution-layer marriage:
 **Recommended — bare `/fable` (user-level skill):**
 
 ```
-git clone https://github.com/casualsav/fable-consult
-./fable-consult/install.sh
+git clone https://github.com/casualsav/fable-bench
+./fable-bench/install.sh
 ```
 
-This copies the skill and agents into your Claude config dir
-(`~/.claude`, or `$CLAUDE_CONFIG_DIR`). This is the manual-only package — no
-always-on layer, nothing merged into your CLAUDE.md; consults happen only when
-you type `/fable`. The installer asks two questions (env vars skip them for
+This copies the skills and agents into your Claude config dir
+(`~/.claude`, or `$CLAUDE_CONFIG_DIR`) and merges the auto-layer trigger policy
+into that scope's `CLAUDE.md` behind sentinels. The installer asks two
+questions (env vars skip them for
 non-interactive installs):
 
 1. **Fable plan-consult effort** (`FABLE_EFFORT`, recommended **high**).
@@ -56,19 +66,40 @@ non-interactive installs):
    cold REVIEW-ONLY engagements.
 
 Worker efforts are pinned in frontmatter (they cost speed, not Fable):
-verifier + explorer `low` · coder `medium` ·
-engineer + reviewer + test-writer `high`.
+verification + explore `low` · coder + smoke-tester `medium` · test-writer `high` ·
+engineer + reviewer `high`.
 
-User skills aren't namespaced, so the command is exactly `/fable`. Restart /
-reload your session, then invoke `/fable` on any task.
+User skills aren't namespaced, so the command is exactly `/fable`. Restart / reload your session after
+installing.
+
+**Alternative — as a plugin (namespaced `/fable-bench:fable`):**
+
+```
+/plugin marketplace add casualsav/fable-bench
+/plugin install fable-bench
+```
+
+You get `/plugin`-managed updates, but Claude Code namespaces every plugin
+command, so it invokes as `/fable-bench:fable` — not bare `/fable` — and the
+workers are namespaced too (see the plugin note below). Pick this only if you
+want the managed-update path over the clean name.
 
 ## Uninstall
 
+If you used the script:
+
 ```
-./fable-consult/uninstall.sh
+./fable-bench/uninstall.sh
 ```
 
-`/fable` writes nothing persistent beyond those files — its only
+If you installed the plugin:
+
+```
+/plugin uninstall fable-bench
+/plugin marketplace remove casualsav/fable-bench
+```
+
+Either way, `/fable` writes nothing persistent beyond those files — its only
 runtime state is an in-session task checkpoint that lives and dies with the
 session — so nothing is left behind.
 
@@ -83,7 +114,7 @@ session — so nothing is left behind.
 ## Tuning Fable's effort
 
 Fable's reasoning depth is set by the `effort:` frontmatter in the installed
-`oracle` agent. `install.sh` **prompts** for it and writes your choice in —
+`fable-planner` agent. `install.sh` **prompts** for it and writes your choice in —
 **recommended: high** — Anthropic's own default for nontrivial work, and `/fable` only fires
 on nontrivial work; Fable at medium buys little margin over the Opus driver (Fable-low is
 comparable to Opus-xhigh). Raise to `xhigh` for a rare, capability-critical consult. One honest caveat: thinking
@@ -91,8 +122,8 @@ tokens bill at Fable's output rate ($50/MTok), so effort — not the visible rep
 the biggest cost dial in the system; `medium` is the legitimate lever if usage limits bite:
 
 ```
-./fable-consult/install.sh                      # prompts: low | medium | high | xhigh | max
-FABLE_EFFORT=high ./fable-consult/install.sh     # or set it to skip the prompt / for CI
+./fable-bench/install.sh                      # prompts: low | medium | high | xhigh | max
+FABLE_EFFORT=high ./fable-bench/install.sh     # or set it to skip the prompt / for CI
 ```
 
 Re-run with a new value to change it. (**Two efforts now govern the two engagements** —
@@ -100,21 +131,36 @@ verified: changing effort mid-conversation does NOT invalidate the message cache
 frontmatter effort applies to the plan consult; the warm review and any exception mid-consult
 are resumed with a per-invocation override to `medium`, since they're bounded judgment
 against an already-vetted plan. This makes `xhigh` plan consults affordable: the deep
-thinking is spent once, not twice.)
+thinking is spent once, not twice. If you install via `/plugin` instead of `install.sh`, the
+shipped default is `high`; edit the agent's `effort:` frontmatter to change it.)
 
 ## What's inside
 
 | File | Role |
 |---|---|
 | `skills/fable/SKILL.md` | The `/fable` flow + all the consult discipline (brief format, coded-output decoding, bindingness). |
-| `agents/oracle.md` | The Fable 5 consultant — dual-mode: plan critique, and warm review when resumed. |
+| `agents/fable-planner.md` | The Fable 5 consultant — dual-mode: plan critique, and warm review when resumed. |
 | `agents/explorer.md` | Sonnet discovery worker (grounds the brief; also spawned by the consultant for its own search). |
 | `agents/verifier.md` | Haiku test/lint/build runner (returns distilled pass/fail for self-verify). |
 | `agents/coder.md` | Sonnet worker: small, precisely-specced fixes. Gated by `reviewer`. |
 | `agents/engineer.md` | Opus worker: behavior-preserving structural refactors, tests-first on uncovered code. |
 | `agents/test-writer.md` | Sonnet worker: characterization/regression tests; orchestrator escalates gnarly cases to Opus. |
 | `agents/reviewer.md` | Opus read-only gate: reviews every worker diff before merge; also the zero-Fable review tier and the degraded fallback when a warm-review handle is lost. |
+| `agents/smoke-tester.md` | Sonnet live prober: drives the real running app end-to-end post-deploy — green unit tests are not the finish line. |
 | `install.sh` / `uninstall.sh` | User-level install of the skill + agents into `~/.claude` (`$CLAUDE_CONFIG_DIR`), giving bare `/fable`. |
+| `.claude-plugin/` | Manifests for the alternative `/plugin` install (namespaced `/fable-bench:fable`). |
+
+## Plugin note (only if you chose the plugin path)
+
+The script install puts the agents at user level, where they resolve by bare name
+(`explorer`, `fable-planner`, `verifier`) — exactly what `SKILL.md` and
+`fable-planner.md` reference — so there's nothing to check.
+
+The **plugin** path is different: Claude Code namespaces plugin subagents (e.g.
+`fable-bench:explore`). After a plugin install, run one `/fable` on a throwaway
+task and confirm the discovery and verification workers resolve; if bare names
+don't, qualify them in `agents/fable-planner.md` (its nested `explorer` spawn) and
+in `SKILL.md`. This mismatch is the main reason the script install is recommended.
 
 ## License
 
