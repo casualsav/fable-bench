@@ -1,36 +1,41 @@
 # fable-bench
 
-One repo, two modes, gated by who's driving the session (this is the LITE
-variant — no auto layer; consults are always on-demand):
+**Fable is the planner.** `/fable` on any nontrivial task: you (a below-Fable
+driver — Sonnet or Opus) gather the evidence, Claude Fable 5 writes the plan
+— unanchored by any draft of yours — you execute it, and the *same* Fable
+agent is resumed at the end for a warm diff-review. Nothing fires unless you
+type it (this is the LITE variant — no auto layer).
 
-1. **Manual `/fable`** (any below-Fable driver): an on-demand **Claude Fable 5
-   plan-consult** on any task, then an **automatic warm diff-review** of the
-   result. You drive; Fable consults. Nothing fires unless you type it.
-2. **Lead playbook** (default whenever Fable itself is the driving model):
-   consults are suppressed as redundant — Fable specs, reviews, and ships;
-   the worker agents write the code. Same agents, same S5-alt mechanics.
+An optional **lead mode** covers sessions where Fable itself is the driving
+model: plan engagements are suppressed as redundant — Fable specs, reviews,
+and ships; the worker agents write the code. It's a ~6-line CLAUDE.md block
+(pointing at `skills/fable/LEAD.md`), NOT installed by default, and inert in
+below-Fable sessions.
 
-The installed CLAUDE.md block is ~24 lines and applies only to Fable-led
-sessions; below-Fable sessions ignore it and just have `/fable` available.
-
-The philosophy: **you (a below-Fable driver — Sonnet or Opus) hold full session context and do the work.** Fable 5 has stronger
-judgment but zero session context, so it's a consultant you touch twice per `/fable`
-— one plan consult before you build, one warm review of the diff after — plus at most one
-exception-triggered mid-consult if a checkpoint or assumption Fable flagged fails mid-task.
-It's the plan-and-review discipline of a heavier "driver + Fable-consultant" config,
-repackaged so **you decide when to invoke it** instead of it firing automatically.
+The philosophy: **the driver holds full session context and does the work;
+Fable holds the judgment.** Fable 5 has stronger judgment but zero session
+context, so the driver's job is to compress that context into a terse
+evidence brief — constraints, acceptance criteria, file map, load-bearing
+code — and Fable's job is the plan. Two touches per `/fable` — the plan
+engagement before you build, the warm review of the diff after — plus at most
+one exception-triggered mid-consult if a checkpoint or assumption Fable
+flagged fails mid-task.
 
 ## What it does
 
 Run `/fable` on a nontrivial task and it drives this flow:
 
-1. **Ground** — map the relevant code with `explorer` workers (scaled to the task) and capture the project's test command.
+1. **Ground** — map the relevant code with `explorer` workers (scaled to the task), capture the test command and baseline.
 2. **Preflight** — confirm your harness can resume a subagent (the hard dependency below).
-3. **Draft + draft check** — you write a short plan; a structural self-test (can you write the `REJECTED:` line?) picks *critique-my-draft*, *blind-sketch* (Fable sketches its approach before seeing your draft), or rarely *dual-plan*.
-4. **Plan consult** — Fable returns a terse coded verdict (`ENDORSE / AMEND / REPLACE`).
+3. **Brief** — compress the evidence into a terse plan brief (≤3.5k tokens): intent, task verbatim, constraints, `DONE-MEANS`, file map, pasted load-bearing code. Zero approach content — no draft, no leading questions.
+4. **Plan** — Fable returns the numbered plan (terse, coded) with risks, checkpoints, assumptions.
 5. **Execute** — you build it, logging deviations; if a Fable checkpoint or assumption fails, one warm mid-consult is allowed.
 6. **Warm review** — the *same* Fable agent is resumed to review the diff (`SHIP / FIX-THEN-SHIP / RECONSULT`).
-7. **Apply MUST-FIX, self-verify, ship** — no third consult.
+7. **Apply MUST-FIX, self-verify, ship** — no third engagement.
+
+(An opt-in **critique mode** — you draft, Fable attacks it with
+`ENDORSE / AMEND / REPLACE` — survives for when the user explicitly asks for a
+critique of the driver's own plan.)
 
 Three additions from the execution-layer marriage:
 
@@ -39,9 +44,9 @@ Three additions from the execution-layer marriage:
   gates every result through `reviewer`, and sends the merged diff to the one warm
   review. Speed comes from parallelism; quality holds because of the gates. Dependent chains
   stay inline.
-- **Batch mode:** ≤3 small, vetted, non-interacting drafts share one plan consult and one
+- **Batch mode:** ≤3 small, vetted, non-interacting items share one plan engagement and one
   warm review — thinking overhead bills per engagement, so batching amortizes it.
-- **Review-only mode:** pre-approved mechanical items skip the plan consult; a cold
+- **Review-only mode:** pre-approved mechanical items skip the plan engagement; a cold
   `REVIEW-ONLY` Fable engagement (or, for trivial diffs, the Sonnet `reviewer` at zero
   Fable) judges the result. Tiered so no diff is double-reviewed by default.
 
@@ -55,15 +60,18 @@ git clone https://github.com/casualsav/fable-bench
 ```
 
 This copies the skills and agents into your Claude config dir
-(`~/.claude`, or `$CLAUDE_CONFIG_DIR`) and merges the auto-layer trigger policy
-into that scope's `CLAUDE.md` behind sentinels. The installer asks two
-questions (env vars skip them for
-non-interactive installs):
+(`~/.claude`, or `$CLAUDE_CONFIG_DIR`). Your `CLAUDE.md` is untouched by
+default (stale blocks from earlier installs are stripped). The installer asks
+three questions (env vars skip them for non-interactive installs):
 
-1. **Fable plan-consult effort** (`FABLE_EFFORT`, recommended **high**).
+1. **Fable plan effort** (`FABLE_EFFORT`, recommended **high**).
 2. **Fable review effort** (`FABLE_REVIEW_EFFORT`, recommended **medium**) —
    applied as the per-invocation override on the warm review, mid-consults, and
    cold REVIEW-ONLY engagements.
+3. **Lead mode** (`FABLE_LEAD`, default **no**) — only worth `yes` if you run
+   sessions with Fable as the driving model; it merges a ~6-line block into
+   `CLAUDE.md` behind sentinels that points Fable-led sessions at
+   `skills/fable/LEAD.md`. Below-Fable sessions ignore it.
 
 Worker efforts are pinned in frontmatter (they cost speed, not Fable):
 verification + explore `low` · coder + smoke-tester `medium` · test-writer `high` ·
@@ -105,7 +113,7 @@ session — so nothing is left behind.
 
 ## Requirements
 
-- **Claude Fable 5** access (the consultant agent runs `model: fable`; `install.sh` prompts
+- **Claude Fable 5** access (the planner agent runs `model: fable`; `install.sh` prompts
   for effort, recommended `high` — see below).
 - **A harness that supports warm subagent-resume** (`SendMessage` to a spawned agent). The
   warm review resumes the plan agent; there is **no cold fallback**. If resume isn't available,
@@ -117,7 +125,7 @@ Fable's reasoning depth is set by the `effort:` frontmatter in the installed
 `fable-planner` agent. `install.sh` **prompts** for it and writes your choice in —
 **recommended: high** — Anthropic's own default for nontrivial work, and `/fable` only fires
 on nontrivial work; Fable at medium buys little margin over the Opus driver (Fable-low is
-comparable to Opus-xhigh). Raise to `xhigh` for a rare, capability-critical consult. One honest caveat: thinking
+comparable to Opus-xhigh). Raise to `xhigh` for a rare, capability-critical plan. One honest caveat: thinking
 tokens bill at Fable's output rate ($50/MTok), so effort — not the visible reply caps — is
 the biggest cost dial in the system; `medium` is the legitimate lever if usage limits bite:
 
@@ -128,9 +136,9 @@ FABLE_EFFORT=high ./fable-bench/install.sh     # or set it to skip the prompt / 
 
 Re-run with a new value to change it. (**Two efforts now govern the two engagements** —
 verified: changing effort mid-conversation does NOT invalidate the message cache. The
-frontmatter effort applies to the plan consult; the warm review and any exception mid-consult
+frontmatter effort applies to the plan engagement; the warm review and any exception mid-consult
 are resumed with a per-invocation override to `medium`, since they're bounded judgment
-against an already-vetted plan. This makes `xhigh` plan consults affordable: the deep
+against an already-vetted plan. This makes `xhigh` plans affordable: the deep
 thinking is spent once, not twice. If you install via `/plugin` instead of `install.sh`, the
 shipped default is `high`; edit the agent's `effort:` frontmatter to change it.)
 
@@ -138,10 +146,11 @@ shipped default is `high`; edit the agent's `effort:` frontmatter to change it.)
 
 | File | Role |
 |---|---|
-| `skills/fable/SKILL.md` | The `/fable` flow + all the consult discipline (brief format, coded-output decoding, bindingness). |
+| `skills/fable/SKILL.md` | The `/fable` flow + all the engagement discipline (brief format, coded-output decoding, bindingness). |
+| `skills/fable/LEAD.md` | The Fable-lead playbook, loaded by the optional lead-mode CLAUDE.md block (Fable-driven sessions only). |
 | `skills/fable-method/SKILL.md` | Fable’s working method distilled for the below-Fable driver — decomposition, self-verification, next-action selection. Load at the start of any nontrivial task. |
-| `agents/fable-planner.md` | The Fable 5 consultant — dual-mode: plan critique, and warm review when resumed. |
-| `agents/explorer.md` | Sonnet discovery worker (grounds the brief; also spawned by the consultant for its own search). |
+| `agents/fable-planner.md` | The Fable 5 planner — writes the plan from the evidence brief; warm diff-review when resumed; opt-in critique mode. |
+| `agents/explorer.md` | Sonnet discovery worker (grounds the brief; also spawned by the planner for its own search). |
 | `agents/verifier.md` | Haiku test/lint/build runner (returns distilled pass/fail for self-verify). |
 | `agents/coder.md` | Sonnet worker: small, precisely-specced fixes. Gated by `reviewer`. |
 | `agents/engineer.md` | Sonnet worker: behavior-preserving structural refactors, tests-first on uncovered code. |

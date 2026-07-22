@@ -1,19 +1,20 @@
 ---
 name: fable
-description: Run a Claude Fable 5 plan-consult on the current task, then an automatic warm diff-review after you execute. Invoke when you want a stronger-judgment second opinion on a plan before building, plus a review of the result after. You (the below-Fable driver — Sonnet or Opus) hold full session context and execute; Fable is a context-blind consultant — one plan consult at the start, one warm review at the end. Trigger on "/fable", "consult Fable", "get a Fable plan review", or when the user wants an independent plan-and-review pass on a nontrivial change.
+description: Have Claude Fable 5 plan the current task, then run an automatic warm diff-review after you execute. You (the below-Fable driver — Sonnet or Opus) gather the evidence and execute; Fable is the context-blind PLANNER — one plan engagement at the start (it writes the plan, unanchored by any draft of yours), one warm review at the end. Trigger on "/fable", "get a Fable plan", "consult Fable", or when the user wants Fable-planned execution of a nontrivial change. An explicit "critique my plan" request switches to the opt-in critique mode.
 ---
 
-# /fable — you drive, Fable consults
+# /fable — Fable plans, you execute
 
-You are the driver (below-Fable — Sonnet or Opus): you hold full session context, execute inline, and make every
-micro-judgment yourself. Fable 5 is a consultant with stronger judgment but ZERO session
-context — it reads only what your brief points to. It is never in the loop. Across one
-`/fable` you touch Fable twice — **one plan consult** at the start, **one warm review** at
+You are the driver (below-Fable — Sonnet or Opus): you hold full session context, gather the
+evidence, execute, and make every micro-judgment yourself. Fable 5 is the PLANNER — stronger
+judgment, ZERO session context; it reads only what your brief points to, and it writes the
+plan unanchored by any draft of yours. It is never in the loop. Across one `/fable` you touch
+Fable twice — **one plan engagement** at the start, **one warm review** at
 the end (a resume of the same agent) — plus at most one exception-triggered mid-consult
 (S5). Never a scheduled third touch. **MODEL GATE:** if this session's
 driving model is itself Fable-tier, never spawn `fable-planner` — you ARE the
-consultant, and a spawn pays twice for the same judgment. `/fable` then means:
-run S1 and the draft check on yourself, execute per S5/S5-alt, review the
+planner, and a spawn pays twice for the same judgment. `/fable` then means:
+plan it yourself (S1's evidence discipline still applies), execute per S5/S5-alt, review the
 diff YOURSELF (S5-alt's `reviewer` spawns don't apply — a Fable lead reads
 worker diffs first-hand), plus `smoke-tester` when runtime behavior changed.
 All Fable-touch budgets read as zero.
@@ -26,7 +27,7 @@ cannot resume a subagent, `/fable` cannot review — there is no cold fallback. 
 already has Fable judgment on tap mid-task — the advisor reads the FULL conversation
 server-side, no brief needed. For an ad-hoc second opinion, prefer asking for an advisor
 consult over invoking this skill. `/fable` remains the right tool when you want the full
-discipline: a structured plan-consult against a draft you must defend, plus the owed warm
+discipline: a Fable-authored plan built from grounded evidence, plus the owed warm
 diff-review at the end.
 
 ## The flow
@@ -36,8 +37,8 @@ local, self-evident change, delegate mapping to `explorer` workers (scale it: sk
 one-file change, fan out several for a subsystem consult) and fold their CONCLUSIONS — not
 raw dumps — into the brief. When the mapping is destined for a consult brief, instruct
 `explorer` to return NEUTRAL fact-maps (interfaces, call paths, invariants, line refs), not
-recommendations — driver-flavored conclusions re-anchor the exact frame blind-sketch exists to
-avoid. Capture the project's **test / verify command** and RUN it once
+recommendations — driver-flavored conclusions re-anchor the exact frame the blind plan
+exists to avoid. Capture the project's **test / verify command** and RUN it once
 (inline or via `verifier`): the brief must state the baseline (`BASELINE: green`, or the
 red facts) so Fable never plans against a false premise, and S7 needs the command. Resolve
 every lookup yourself now (Lookup fence, below) so the brief carries established facts, not
@@ -48,13 +49,17 @@ agent) is available; if NOT, tell the user `/fable` can't run without it and STO
 before paying for the plan consult. `TaskCreate` is degradable: if absent, carry the S4
 checkpoint in your own running notes and continue.
 
-**S1 — Draft + draft check.** Write a draft plan (5–15 lines). Run the draft check (below):
-it picks critique-your-draft, blind-sketch, or (rarely) dual-plan.
+**S1 — Mode check.** Default is **plan mode**: the brief carries evidence and NO plan of
+yours — Fable writes the plan. Do NOT draft one first, even privately-then-discarded: your
+questions and framing leak its shape, and an anchored Fable plan is the failure this skill
+exists to avoid. **Critique mode** is opt-in only — the user explicitly asked you to draft
+and have Fable critique it (see Critique mode below).
 
 **S2 — Build the plan brief** to the spec below, gated by the Lookup fence.
 
-**S3 — Spawn `fable-planner`.** One plan consult (blind-sketch mode uses two messages in the
-same engagement). Decode the coded verdict against the table below; apply per Bindingness.
+**S3 — Spawn `fable-planner`.** One plan engagement. It returns a numbered PLAN (S1, S2…)
+with RISKS / CHECKPOINTS / ASSUMPTIONS in the coded format below; that plan is what you
+execute and what the warm review audits against. Apply per Bindingness.
 
 **S4 — Register the owed warm review as a self-contained task item.** `TaskCreate` a
 checkpoint that survives the execution turns. It MUST embed: the **`fable-planner` agent
@@ -130,27 +135,16 @@ timeout) before shipping — green unit tests are not the finish line. Ship on g
 post-fix Fable touch — a MUST-FIX that genuinely can't be made to pass is disclosed to the
 user, not sent back to Fable.
 
-## The draft check — decision or first idea? (zero Fable, picks the mode)
-Write the line `REJECTED: <alternative> — <reason>` for your draft's load-bearing approach.
-Structural, not felt: either the line exists in the brief or it doesn't — "am I confident?"
-is always yes and self-deceiving.
-- **You can write it** → your draft is a vetted prior. **Critique mode:** Fable spends its
-  rate on the failure modes of a structure you've already reasoned through, and the REJECTED
-  line stops it re-proposing the alternative you killed — its "aligned" then means real
-  convergence.
-- **You can't** (no runner-up, or no concrete reason it lost) → you have a first idea, not a
-  chosen approach; critiquing it launders your uncertainty into false convergence. Use
-  **blind-sketch:** send the brief WITHOUT the draft, asking for Fable's approach sketch
-  (≤5 lines). Its sketch is generated unanchored. Then send your draft in a follow-up message
-  of the same conversation for the normal critique. Cost over critique mode: one round trip
-  + a few lines.
-- **Dual-plan (rare):** several viable architectures and a wrong structure is expensive to
-  unwind → ask Fable for its OWN full numbered plan alongside your draft, then YOU diff and
-  arbitrate (you hold the context). Cost is real — a full second plan is pure output
-  ($50/MTok), no delta-encoding — so never a default; blind-sketch covers most draft-check failures.
-
-Run the check on the load-bearing approach, not every line. A mostly-vetted draft with ONE
-first-idea step still critiques — name that step in your questions so Fable weighs it fresh.
+## Critique mode (opt-in only — user explicitly asked for a critique of YOUR plan)
+Write a draft plan (5–15 lines), and write the line `REJECTED: <alternative> — <reason>`
+for its load-bearing approach. If you CAN'T write that line (no runner-up, or no concrete
+reason it lost), you have a first idea, not a chosen approach — tell the user and fall back
+to default plan mode: critiquing a first idea launders your uncertainty into false
+convergence. If you can, send the brief with sections 6–8 included: Fable spends its rate
+on the failure modes of a structure you've already reasoned through, and the REJECTED line
+stops it re-proposing the alternative you killed — its ENDORSE then means real convergence.
+Verdicts here are ENDORSE / AMEND / REPLACE (AMEND = deltas onto your draft, unlisted steps
+stand; REPLACE only when the draft is wrong end-to-end).
 
 ## Building the brief — this is where a consult lives or dies
 Transfer conclusions, not context. Fable reads pointed-to files (≤8 reads) and delegates
@@ -177,12 +171,14 @@ ask at the end:
    kind of change, stated factually, not as recommendation.
 5. Pasted load-bearing code ≤150 lines (the interfaces/schemas/functions being changed, with
    file:line headers).
-6. `REJECTED: <alt> — <reason>` (from the draft check).
-7. YOUR DRAFT PLAN, opened with "my draft view, for you to critique or replace".
-   (Blind-sketch: omit 6–8 from message one — your questions are born from the draft and
-   telegraph its shape, anchoring the sketch; send 6–8 together in the follow-up.)
-8. 1–3 questions you are actually unsure about, then the bare marker `PROBE` — the agent
-   prompt defines it (would Fable take a materially different approach?); don't restate it.
+6. 0–3 numbered questions you genuinely can't resolve from evidence (open design forks,
+   unstated tradeoffs). Phrase them neutrally — a question that telegraphs your preferred
+   answer anchors the plan you're paying Fable not to anchor.
+7. *(Critique mode only)* `REJECTED: <alt> — <reason>`, then YOUR DRAFT PLAN, opened with
+   "my draft view, for you to critique or replace".
+
+The default brief carries ZERO approach content — no draft, no leading questions, no
+"prior art" phrased as recommendation. Evidence in, plan out.
 
 **Warm review brief** (resumed `fable-planner`; target ≤1.5k tokens + diff): ONLY what is new
 since planning — deviations log · the diff (full if ≤400 lines; else --stat + risky hunks in
@@ -190,16 +186,15 @@ full) · verification evidence (command → result, one line each) · 1–3 conc
 line (the agent prompt carries review stance); never re-send the plan, file map, or pasted
 code — the agent holds them, and re-sending is the waste warm mode exists to avoid.
 
-A brief missing the draft plan (in critique mode) or the session constraints is a wasted
-consult — Fable will return generic advice worth less than your own judgment.
+A brief missing the session constraints or DONE-MEANS is a wasted engagement — Fable will
+plan against a false or vague premise and you'll deviate your way back to your own judgment.
 
 ## Batch mode (≤3 small related items)
-Thinking bills at output rate per ENGAGEMENT, so N tiny consults pay that overhead N times.
-When several small items share a subsystem and EVERY draft passes the draft check (a
-first-idea item gets its own consult — blind-sketch doesn't batch), send ONE plan brief
-carrying T1/T2/T3 blocks: each block = task verbatim, its REJECTED line, its draft (≤6
-lines). Shared file map, constraints, and pasted code appear once. Fable's findings reference
-`T#S#`; one VERDICT line per task. Execute all (S5 or S5-alt), then ONE warm review over the
+Thinking bills at output rate per ENGAGEMENT, so N tiny engagements pay that overhead N
+times. When several small items share a subsystem, send ONE plan brief carrying T1/T2/T3
+blocks: each block = task verbatim + its DONE-MEANS. Shared file map, constraints, and
+pasted code appear once. Fable returns one `T# PLAN:` block per task, steps referenced as
+`T#S#`. Execute all (S5 or S5-alt), then ONE warm review over the
 combined diff — deviations and hunks labeled by T#. Never batch items that interact: a
 cross-item flaw needs one plan, not a batch.
 
@@ -226,10 +221,13 @@ Fable replies in a coded, exception-based format because its OUTPUT bills at 5×
 - Given `END` is present: silence = accept. No MUST-FIX line ⇒ SHIP; a deviation absent from
   DEVIATION AUDIT ⇒ ACCEPTED; no PLAN AUDIT line ⇒ the plan held; empty RISKS/ASSUMPTIONS ⇒
   none. Never re-ask Fable to "confirm the rest is fine" — that confirmation is the silence.
-- References are pointers into context YOU hold: `S#` = a step of your draft plan, `H#` = a
+- The plan engagement returns `PLAN:` numbered steps (`S# imperative (files)`), plus answers
+  to your numbered questions and any RISKS / CHECKPOINTS / ASSUMPTIONS. That plan IS the
+  plan of record; `S#` everywhere after (checkpoints, deviations, review) references it.
+  (Critique mode only: verdicts are ENDORSE / AMEND / REPLACE; AMEND emits deltas onto your
+  draft, unlisted steps stand, and `S#` references your draft.)
+- References are pointers into context YOU hold: `S#` = a plan step, `H#` = a
   diff hunk, `D#` = a logged deviation. Resolve them against your own copy.
-- AMEND emits only deltas — apply them onto your draft; unlisted steps stand. ENDORSE with
-  only a verdict line means run your draft as-is.
 - A line is one finding: `path:line CODE imperative` (plan-level codes reference `S#`). A
   genuinely undecodable line (not just terse) is the ONE case for a RECONSULT — read the
   FREE: escape first.
