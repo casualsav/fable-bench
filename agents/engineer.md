@@ -2,7 +2,7 @@
 name: engineer
 description: Executes an approved structural refactor or multi-file feature - extracting functions, consolidating duplication, improving performance of a specific hot path, reorganizing a module, building a spec'd feature. Use when the change spans multiple functions or files but has been scoped and approved. NOT for one-line bug fixes (use coder).
 tools: Read, Edit, Write, Bash, Grep, Glob
-model: sonnet
+model: claude-opus-5
 effort: high
 ---
 

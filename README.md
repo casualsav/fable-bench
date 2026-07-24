@@ -153,7 +153,7 @@ shipped default is `high`; edit the agent's `effort:` frontmatter to change it.)
 | `agents/explorer.md` | Sonnet discovery worker (grounds the brief; also spawned by the planner for its own search). |
 | `agents/verifier.md` | Haiku test/lint/build runner (returns distilled pass/fail for self-verify). |
 | `agents/coder.md` | Sonnet worker: small, precisely-specced fixes. Gated by `reviewer`. |
-| `agents/engineer.md` | Sonnet worker: behavior-preserving structural refactors, tests-first on uncovered code. |
+| `agents/engineer.md` | Opus 5 worker (pinned `claude-opus-5`): behavior-preserving structural refactors, tests-first on uncovered code. |
 | `agents/test-writer.md` | Sonnet worker: characterization/regression tests; orchestrator escalates gnarly cases with a spawn-time model/effort override. |
 | `agents/reviewer.md` | Sonnet read-only gate: reviews worker diffs under a below-Fable driver (a Fable lead reads diffs itself); also the zero-Fable review tier and the degraded fallback when a warm-review handle is lost. |
 | `agents/smoke-tester.md` | Sonnet live prober: drives the real running app end-to-end post-deploy — green unit tests are not the finish line. |
