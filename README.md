@@ -55,8 +55,8 @@ Three additions from the execution-layer marriage:
 **Recommended — bare `/oracle` (user-level skill):**
 
 ```
-git clone https://github.com/casualsav/fable-bench
-./fable-bench/install.sh
+git clone https://github.com/casualsav/the-oracle
+./the-oracle/install.sh
 ```
 
 This copies the skills and agents into your Claude config dir
@@ -83,7 +83,7 @@ installing.
 **Alternative — as a plugin (namespaced `/fable-bench:oracle`):**
 
 ```
-/plugin marketplace add casualsav/fable-bench
+/plugin marketplace add casualsav/the-oracle
 /plugin install fable-bench
 ```
 
@@ -97,14 +97,14 @@ want the managed-update path over the clean name.
 If you used the script:
 
 ```
-./fable-bench/uninstall.sh
+./the-oracle/uninstall.sh
 ```
 
 If you installed the plugin:
 
 ```
 /plugin uninstall fable-bench
-/plugin marketplace remove casualsav/fable-bench
+/plugin marketplace remove casualsav/the-oracle
 ```
 
 Either way, `/oracle` writes nothing persistent beyond those files — its only
@@ -130,8 +130,8 @@ tokens bill at Fable's output rate ($50/MTok), so effort — not the visible rep
 the biggest cost dial in the system; `medium` is the legitimate lever if usage limits bite:
 
 ```
-./fable-bench/install.sh                      # prompts: low | medium | high | xhigh | max
-FABLE_EFFORT=high ./fable-bench/install.sh     # or set it to skip the prompt / for CI
+./the-oracle/install.sh                      # prompts: low | medium | high | xhigh | max
+FABLE_EFFORT=high ./the-oracle/install.sh     # or set it to skip the prompt / for CI
 ```
 
 Re-run with a new value to change it. (**Two efforts now govern the two engagements** —
