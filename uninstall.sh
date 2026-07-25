@@ -5,7 +5,7 @@ set -euo pipefail
 
 CLAUDE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 
-rm -rf "$CLAUDE/skills/fable" "$CLAUDE/skills/fable-method"
+rm -rf "$CLAUDE/skills/oracle" "$CLAUDE/skills/fable" "$CLAUDE/skills/fable-method"
 for a in explorer fable-planner verifier coder engineer test-writer reviewer smoke-tester; do
   rm -f "$CLAUDE/agents/$a.md"
 done

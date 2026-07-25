@@ -1,6 +1,6 @@
 # fable-bench
 
-**Fable is the planner.** `/fable` on any nontrivial task: you (a below-Fable
+**Fable is the planner.** `/oracle` on any nontrivial task: you (a below-Fable
 driver — Sonnet or Opus) gather the evidence, Claude Fable 5 writes the plan
 — unanchored by any draft of yours — you execute it, and the *same* Fable
 agent is resumed at the end for a warm diff-review. Nothing fires unless you
@@ -9,21 +9,21 @@ type it (this is the LITE variant — no auto layer).
 An optional **lead mode** covers sessions where Fable itself is the driving
 model: plan engagements are suppressed as redundant — Fable specs, reviews,
 and ships; the worker agents write the code. It's a ~6-line CLAUDE.md block
-(pointing at `skills/fable/LEAD.md`), NOT installed by default, and inert in
+(pointing at `skills/oracle/LEAD.md`), NOT installed by default, and inert in
 below-Fable sessions.
 
 The philosophy: **the driver holds full session context and does the work;
 Fable holds the judgment.** Fable 5 has stronger judgment but zero session
 context, so the driver's job is to compress that context into a terse
 evidence brief — constraints, acceptance criteria, file map, load-bearing
-code — and Fable's job is the plan. Two touches per `/fable` — the plan
+code — and Fable's job is the plan. Two touches per `/oracle` — the plan
 engagement before you build, the warm review of the diff after — plus at most
 one exception-triggered mid-consult if a checkpoint or assumption Fable
 flagged fails mid-task.
 
 ## What it does
 
-Run `/fable` on a nontrivial task and it drives this flow:
+Run `/oracle` on a nontrivial task and it drives this flow:
 
 1. **Ground** — map the relevant code with `explorer` workers (scaled to the task), capture the test command and baseline.
 2. **Preflight** — confirm your harness can resume a subagent (the hard dependency below).
@@ -52,7 +52,7 @@ Three additions from the execution-layer marriage:
 
 ## Install
 
-**Recommended — bare `/fable` (user-level skill):**
+**Recommended — bare `/oracle` (user-level skill):**
 
 ```
 git clone https://github.com/casualsav/fable-bench
@@ -71,16 +71,16 @@ three questions (env vars skip them for non-interactive installs):
 3. **Lead mode** (`FABLE_LEAD`, default **no**) — only worth `yes` if you run
    sessions with Fable as the driving model; it merges a ~6-line block into
    `CLAUDE.md` behind sentinels that points Fable-led sessions at
-   `skills/fable/LEAD.md`. Below-Fable sessions ignore it.
+   `skills/oracle/LEAD.md`. Below-Fable sessions ignore it.
 
 Worker efforts are pinned in frontmatter (they cost speed, not Fable):
 verification + explore `low` · coder + smoke-tester `medium` · test-writer `high` ·
 engineer + reviewer `high`.
 
-User skills aren't namespaced, so the command is exactly `/fable`. Restart / reload your session after
+User skills aren't namespaced, so the command is exactly `/oracle`. Restart / reload your session after
 installing.
 
-**Alternative — as a plugin (namespaced `/fable-bench:fable`):**
+**Alternative — as a plugin (namespaced `/fable-bench:oracle`):**
 
 ```
 /plugin marketplace add casualsav/fable-bench
@@ -88,7 +88,7 @@ installing.
 ```
 
 You get `/plugin`-managed updates, but Claude Code namespaces every plugin
-command, so it invokes as `/fable-bench:fable` — not bare `/fable` — and the
+command, so it invokes as `/fable-bench:oracle` — not bare `/oracle` — and the
 workers are namespaced too (see the plugin note below). Pick this only if you
 want the managed-update path over the clean name.
 
@@ -107,7 +107,7 @@ If you installed the plugin:
 /plugin marketplace remove casualsav/fable-bench
 ```
 
-Either way, `/fable` writes nothing persistent beyond those files — its only
+Either way, `/oracle` writes nothing persistent beyond those files — its only
 runtime state is an in-session task checkpoint that lives and dies with the
 session — so nothing is left behind.
 
@@ -117,13 +117,13 @@ session — so nothing is left behind.
   for effort, recommended `high` — see below).
 - **A harness that supports warm subagent-resume** (`SendMessage` to a spawned agent). The
   warm review resumes the plan agent; there is **no cold fallback**. If resume isn't available,
-  `/fable` detects it at preflight and stops rather than half-running.
+  `/oracle` detects it at preflight and stops rather than half-running.
 
 ## Tuning Fable's effort
 
 Fable's reasoning depth is set by the `effort:` frontmatter in the installed
 `fable-planner` agent. `install.sh` **prompts** for it and writes your choice in —
-**recommended: high** — Anthropic's own default for nontrivial work, and `/fable` only fires
+**recommended: high** — Anthropic's own default for nontrivial work, and `/oracle` only fires
 on nontrivial work; Fable at medium buys little margin over the Opus driver (Fable-low is
 comparable to Opus-xhigh). Raise to `xhigh` for a rare, capability-critical plan. One honest caveat: thinking
 tokens bill at Fable's output rate ($50/MTok), so effort — not the visible reply caps — is
@@ -146,8 +146,8 @@ shipped default is `high`; edit the agent's `effort:` frontmatter to change it.)
 
 | File | Role |
 |---|---|
-| `skills/fable/SKILL.md` | The `/fable` flow + all the engagement discipline (brief format, coded-output decoding, bindingness). |
-| `skills/fable/LEAD.md` | The Fable-lead playbook, loaded by the optional lead-mode CLAUDE.md block (Fable-driven sessions only). |
+| `skills/oracle/SKILL.md` | The `/oracle` flow + all the engagement discipline (brief format, coded-output decoding, bindingness). |
+| `skills/oracle/LEAD.md` | The Fable-lead playbook, loaded by the optional lead-mode CLAUDE.md block (Fable-driven sessions only). |
 | `skills/fable-method/SKILL.md` | Fable’s working method distilled for the below-Fable driver — decomposition, self-verification, next-action selection. Load at the start of any nontrivial task. |
 | `agents/fable-planner.md` | The Fable 5 planner — writes the plan from the evidence brief; warm diff-review when resumed; opt-in critique mode. |
 | `agents/explorer.md` | Sonnet discovery worker (grounds the brief; also spawned by the planner for its own search). |
@@ -157,8 +157,8 @@ shipped default is `high`; edit the agent's `effort:` frontmatter to change it.)
 | `agents/test-writer.md` | Sonnet worker: characterization/regression tests; orchestrator escalates gnarly cases with a spawn-time model/effort override. |
 | `agents/reviewer.md` | Sonnet read-only gate: reviews worker diffs under a below-Fable driver (a Fable lead reads diffs itself); also the zero-Fable review tier and the degraded fallback when a warm-review handle is lost. |
 | `agents/smoke-tester.md` | Sonnet live prober: drives the real running app end-to-end post-deploy — green unit tests are not the finish line. |
-| `install.sh` / `uninstall.sh` | User-level install of the skill + agents into `~/.claude` (`$CLAUDE_CONFIG_DIR`), giving bare `/fable`. |
-| `.claude-plugin/` | Manifests for the alternative `/plugin` install (namespaced `/fable-bench:fable`). |
+| `install.sh` / `uninstall.sh` | User-level install of the skill + agents into `~/.claude` (`$CLAUDE_CONFIG_DIR`), giving bare `/oracle`. |
+| `.claude-plugin/` | Manifests for the alternative `/plugin` install (namespaced `/fable-bench:oracle`). |
 
 ## Plugin note (only if you chose the plugin path)
 
@@ -167,7 +167,7 @@ The script install puts the agents at user level, where they resolve by bare nam
 `fable-planner.md` reference — so there's nothing to check.
 
 The **plugin** path is different: Claude Code namespaces plugin subagents (e.g.
-`fable-bench:explore`). After a plugin install, run one `/fable` on a throwaway
+`fable-bench:explore`). After a plugin install, run one `/oracle` on a throwaway
 task and confirm the discovery and verification workers resolve; if bare names
 don't, qualify them in `agents/fable-planner.md` (its nested `explorer` spawn) and
 in `SKILL.md`. This mismatch is the main reason the script install is recommended.

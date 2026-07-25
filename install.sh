@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Install fable-bench-lite: the manual /fable skill (Fable plans, you execute)
+# Install fable-bench-lite: the manual /oracle skill (Fable plans, you execute)
 # and the worker agents. By default it writes NOTHING new into your CLAUDE.md
 # (stale fable-bench blocks from earlier installs are stripped).
 #
 # Optional lead mode (for sessions where Fable itself is the driving model)
 # merges a ~6-line block into CLAUDE.md behind sentinels, pointing at
-# skills/fable/LEAD.md. Below-Fable sessions ignore it entirely.
+# skills/oracle/LEAD.md. Below-Fable sessions ignore it entirely.
 #
 # Interactive install asks three questions:
 #   1. Fable PLAN effort?                      (recommended: high)
@@ -44,8 +44,8 @@ case " yes no " in *" $LEAD "*) ;; *) echo "FABLE_LEAD must be yes or no" >&2; e
 
 mkdir -p "$CLAUDE/skills" "$CLAUDE/agents"
 
-rm -rf "$CLAUDE/skills/fable" "$CLAUDE/skills/fable-method"
-cp -a "$SRC/skills/fable" "$CLAUDE/skills/fable"
+rm -rf "$CLAUDE/skills/oracle" "$CLAUDE/skills/fable" "$CLAUDE/skills/fable-method"
+cp -a "$SRC/skills/oracle" "$CLAUDE/skills/oracle"
 cp -a "$SRC/skills/fable-method" "$CLAUDE/skills/fable-method"
 
 for a in explorer fable-planner verifier coder engineer test-writer reviewer smoke-tester; do
@@ -54,8 +54,8 @@ done
 
 # Pin the two Fable efforts (BSD + GNU sed compatible).
 sed -i.bak -E "s|^effort:.*|effort: ${PLAN_EFFORT}|" "$CLAUDE/agents/fable-planner.md"
-sed -i.bak -E "s|effort down to \`[a-z]+\`|effort down to \`${REVIEW_EFFORT}\`|g; s|the same \`[a-z]+\` override|the same \`${REVIEW_EFFORT}\` override|g; s|Effort override \`[a-z]+\`|Effort override \`${REVIEW_EFFORT}\`|g" "$CLAUDE/skills/fable/SKILL.md"
-rm -f "$CLAUDE/agents/fable-planner.md.bak" "$CLAUDE/skills/fable/SKILL.md.bak"
+sed -i.bak -E "s|effort down to \`[a-z]+\`|effort down to \`${REVIEW_EFFORT}\`|g; s|the same \`[a-z]+\` override|the same \`${REVIEW_EFFORT}\` override|g; s|Effort override \`[a-z]+\`|Effort override \`${REVIEW_EFFORT}\`|g" "$CLAUDE/skills/oracle/SKILL.md"
+rm -f "$CLAUDE/agents/fable-planner.md.bak" "$CLAUDE/skills/oracle/SKILL.md.bak"
 
 # CLAUDE.md handling: always strip stale sentinel blocks (from earlier
 # fable-bench or legacy fable-auto installs); append the minimal lead-mode
@@ -80,7 +80,7 @@ if [ "$LEAD" = yes ]; then
 else
   echo "  lead mode    : not installed (CLAUDE.md untouched; FABLE_LEAD=yes to add)"
 fi
-echo "  /fable       : Fable plans, you execute (on demand)"
+echo "  /oracle      : Fable plans, you execute (on demand)"
 echo "  agents       : fable-planner + explorer, verifier, coder,"
 echo "                 engineer, test-writer, reviewer, smoke-tester"
 echo
