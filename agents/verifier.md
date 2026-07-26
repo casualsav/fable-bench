@@ -1,7 +1,7 @@
 ---
 name: verifier
 description: Haiku test/lint/build runner. Delegate any verification whose raw output the driver would otherwise scroll inline. Give it exact commands plus what "pass" means; it returns pass/fail and distilled failures.
-model: haiku
+model: claude-haiku-4-5-20251001
 effort: low
 tools: Bash, Read, Grep, Glob
 ---

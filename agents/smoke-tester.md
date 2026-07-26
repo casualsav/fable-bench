@@ -2,7 +2,7 @@
 name: smoke-tester
 description: Drives the REAL running application end-to-end after a deploy to prove a change works live - not just in unit tests. Give it a concrete scenario ("trigger X, assert Y appears within Z"), how to launch/reach the app, and how to clean up. NOT for code changes (use coder), NOT for running test suites (use verification).
 tools: Read, Bash, Grep, Glob
-model: sonnet
+model: claude-sonnet-5
 effort: medium
 ---
 

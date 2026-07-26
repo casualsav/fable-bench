@@ -75,7 +75,7 @@ partial-diff review (half-built code reads as false positives).
 
 **S5-alt — Orchestrated parallel execution (multi-item batches).** When the accepted plan is
 a batch of INDEPENDENT items, don't execute inline: fan out to workers in parallel —
-`coder` (Sonnet) for small specced fixes, `engineer` (Sonnet) for
+`coder` (Sonnet) for small specced fixes, `engineer` (Opus 5) for
 structural work and spec'd feature builds, `test-writer` FIRST wherever touched code lacks
 coverage. If the batch needed a fresh audit, fan that out too: parallel read-only `explorer`
 passes, each owning a slice small enough to read IN FULL — precise findings (file:line,

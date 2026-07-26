@@ -2,7 +2,7 @@
 name: coder
 description: Implements a specific, already-diagnosed code change (bug fix, small improvement, dependency cleanup). Use PROACTIVELY whenever a concrete code modification has been identified and approved. Requires a precise spec - file, function, expected change, and verification steps.
 tools: Read, Edit, Write, Bash, Grep, Glob
-model: sonnet
+model: claude-sonnet-5
 effort: medium
 ---
 

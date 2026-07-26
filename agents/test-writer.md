@@ -2,7 +2,7 @@
 name: test-writer
 description: Writes tests - characterization tests to pin down existing behavior before a refactor, regression tests for a fixed bug, or coverage for untested critical paths. Use PROACTIVELY before any risky change to untested code.
 tools: Read, Write, Edit, Bash, Grep, Glob
-model: sonnet
+model: claude-sonnet-5
 effort: high
 ---
 

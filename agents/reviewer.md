@@ -2,7 +2,7 @@
 name: reviewer
 description: Reviews uncommitted changes or a recent commit for correctness, regressions, and spec compliance. Use PROACTIVELY after coder or engineer completes work, before the orchestrator accepts it. Read-only - never modifies files.
 tools: Read, Grep, Glob, Bash
-model: sonnet
+model: claude-sonnet-5
 effort: high
 ---
 

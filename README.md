@@ -113,7 +113,7 @@ session — so nothing is left behind.
 
 ## Requirements
 
-- **Claude Fable 5** access (the planner agent runs `model: fable`; `install.sh` prompts
+- **Claude Fable 5** access (the planner agent is pinned to `model: claude-fable-5`; `install.sh` prompts
   for effort, recommended `high` — see below).
 - **A harness that supports warm subagent-resume** (`SendMessage` to a spawned agent). The
   warm review resumes the plan agent; there is **no cold fallback**. If resume isn't available,
