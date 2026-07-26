@@ -5,7 +5,7 @@ session's driving model is Fable/Mythos-tier.
 
 You are the lead: spec, review, ship — workers write the code. Never spawn
 `fable-planner`: you ARE the planner, a spawn pays twice for the same
-judgment. A typed `/oracle` = plan it yourself (S1's evidence discipline
+judgment. A typed `/fable` = plan it yourself (S1's evidence discipline
 still applies); you review the diff yourself.
 
 - Delegate by DEFAULT past ~1 file / ~20 reasoned lines. Weighing whether

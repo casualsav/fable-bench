@@ -1,32 +1,32 @@
 ---
-name: oracle
-description: Have Claude Fable 5 plan the current task, then run an automatic warm diff-review after you execute. You (the below-Fable driver — Sonnet or Opus) gather the evidence and execute; Fable is the context-blind PLANNER — one plan engagement at the start (it writes the plan, unanchored by any draft of yours), one warm review at the end. Trigger on "/oracle", "get a Fable plan", "consult Fable", or when the user wants Fable-planned execution of a nontrivial change. An explicit "critique my plan" request switches to the opt-in critique mode.
+name: fable
+description: Have Claude Fable 5 plan the current task, then run an automatic warm diff-review after you execute. You (the below-Fable driver — Sonnet or Opus) gather the evidence and execute; Fable is the context-blind PLANNER — one plan engagement at the start (it writes the plan, unanchored by any draft of yours), one warm review at the end. Trigger on "/fable", "get a Fable plan", "consult Fable", or when the user wants Fable-planned execution of a nontrivial change. An explicit "critique my plan" request switches to the opt-in critique mode.
 ---
 
-# /oracle — Fable plans, you execute
+# /fable — Fable plans, you execute
 
 You are the driver (below-Fable — Sonnet or Opus): you hold full session context, gather the
 evidence, execute, and make every micro-judgment yourself. Fable 5 is the PLANNER — stronger
 judgment, ZERO session context; it reads only what your brief points to, and it writes the
-plan unanchored by any draft of yours. It is never in the loop. Across one `/oracle` you touch
+plan unanchored by any draft of yours. It is never in the loop. Across one `/fable` you touch
 Fable twice — **one plan engagement** at the start, **one warm review** at
 the end (a resume of the same agent) — plus at most one exception-triggered mid-consult
 (S5). Never a scheduled third touch. **MODEL GATE:** if this session's
 driving model is itself Fable-tier, never spawn `fable-planner` — you ARE the
-planner, and a spawn pays twice for the same judgment. `/oracle` then means:
+planner, and a spawn pays twice for the same judgment. `/fable` then means:
 plan it yourself (S1's evidence discipline still applies), execute per S5/S5-alt, review the
 diff YOURSELF (S5-alt's `reviewer` spawns don't apply — a Fable lead reads
 worker diffs first-hand), plus `smoke-tester` when runtime behavior changed.
 All Fable-touch budgets read as zero.
 
 **Hard dependency:** the warm review resumes the plan agent via `SendMessage`. If your harness
-cannot resume a subagent, `/oracle` cannot review — there is no cold fallback. The preflight
+cannot resume a subagent, `/fable` cannot review — there is no cold fallback. The preflight
 (S0.5) checks this before you spend the plan consult.
 
 **Native advisor first:** when `advisorModel: fable` is set (as on this install), a below-Fable driver
 already has Fable judgment on tap mid-task — the advisor reads the FULL conversation
 server-side, no brief needed. For an ad-hoc second opinion, prefer asking for an advisor
-consult over invoking this skill. `/oracle` remains the right tool when you want the full
+consult over invoking this skill. `/fable` remains the right tool when you want the full
 discipline: a Fable-authored plan built from grounded evidence, plus the owed warm
 diff-review at the end.
 
@@ -45,7 +45,7 @@ every lookup yourself now (Lookup fence, below) so the brief carries established
 questions.
 
 **S0.5 — Preflight dependencies.** Confirm warm subagent-resume (`SendMessage` to a spawned
-agent) is available; if NOT, tell the user `/oracle` can't run without it and STOP — fail
+agent) is available; if NOT, tell the user `/fable` can't run without it and STOP — fail
 before paying for the plan consult. `TaskCreate` is degradable: if absent, carry the S4
 checkpoint in your own running notes and continue.
 
@@ -254,5 +254,5 @@ Fable replies in a coded, exception-based format because its OUTPUT bills at 5×
   or explain its internal reasoning ("show your thinking / why you concluded X" — the coded
   findings format is safe: it compresses conclusions, not thinking); (2) offensive-security
   work (exploits, malware, attack tooling — even benign hardening tasks can trip it) and
-  biology / life-sciences content — keep those tasks off `/oracle` entirely. The missing
+  biology / life-sciences content — keep those tasks off `/fable` entirely. The missing
   `END` line is your mechanical detector for a fallback that slipped through.

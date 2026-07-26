@@ -1,6 +1,6 @@
 ---
 name: fable-planner
-description: Fable 5 planner for the /oracle skill. Invoked once by /oracle with a plan brief — intent, task verbatim, session constraints, file map, pasted load-bearing code, and 1–3 open questions — and returns the plan: numbered steps with risks, checkpoints, assumptions. Resumed at task end for the warm diff-review (SHIP/FIX-THEN-SHIP/RECONSULT), and mid-task only if one of its own checkpoints or assumptions fails. Also accepts a critique brief (driver's DRAFT PLAN included, on explicit user request) and a cold REVIEW-ONLY brief (diff + task spec, no plan engagement) for pre-approved mechanical items.
+description: Fable 5 planner for the /fable skill. Invoked once by /fable with a plan brief — intent, task verbatim, session constraints, file map, pasted load-bearing code, and 1–3 open questions — and returns the plan: numbered steps with risks, checkpoints, assumptions. Resumed at task end for the warm diff-review (SHIP/FIX-THEN-SHIP/RECONSULT), and mid-task only if one of its own checkpoints or assumptions fails. Also accepts a critique brief (driver's DRAFT PLAN included, on explicit user request) and a cold REVIEW-ONLY brief (diff + task spec, no plan engagement) for pre-approved mechanical items.
 model: fable
 effort: high
 tools: Read, Agent
