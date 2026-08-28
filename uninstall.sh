@@ -10,6 +10,7 @@ for a in explorer fable-planner verifier coder engineer test-writer reviewer smo
   rm -f "$CLAUDE/agents/$a.md"
 done
 rm -f "$CLAUDE/fable-auto.on"
+rm -f "$CLAUDE/scripts/verify-against.ts"
 
 CMD="$CLAUDE/CLAUDE.md"
 if [ -f "$CMD" ]; then

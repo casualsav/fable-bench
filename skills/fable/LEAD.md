@@ -22,7 +22,8 @@ still applies); you review the diff yourself.
   read): full combined diff, cross-batch interactions included; worker-report
   **Concerns** are your review agenda, not commentary; re-run the spec's
   verify commands (inline or via `verifier`) — a worker's green claim is
-  never load-bearing → `smoke-tester` against the live system when runtime
+  never load-bearing, and a verifier number without its `MEASURED:`
+  provenance line is not a baseline → `smoke-tester` against the live system when runtime
   behavior changed → ship.
 - Amendments to a worker's own diff: resume the SAME worker via SendMessage
   (warm context, seconds); a fresh spawn re-pays the full read. REJECT still

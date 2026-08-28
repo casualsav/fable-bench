@@ -42,7 +42,7 @@ case " $EFFORTS " in *" $PLAN_EFFORT "*) ;; *) echo "FABLE_EFFORT must be one of
 case " $EFFORTS " in *" $REVIEW_EFFORT "*) ;; *) echo "FABLE_REVIEW_EFFORT must be one of: $EFFORTS" >&2; exit 1 ;; esac
 case " yes no " in *" $LEAD "*) ;; *) echo "FABLE_LEAD must be yes or no" >&2; exit 1 ;; esac
 
-mkdir -p "$CLAUDE/skills" "$CLAUDE/agents"
+mkdir -p "$CLAUDE/skills" "$CLAUDE/agents" "$CLAUDE/scripts"
 
 rm -rf "$CLAUDE/skills/fable" "$CLAUDE/skills/oracle" "$CLAUDE/skills/fable-method"
 cp -a "$SRC/skills/fable" "$CLAUDE/skills/fable"
@@ -51,6 +51,9 @@ cp -a "$SRC/skills/fable-method" "$CLAUDE/skills/fable-method"
 for a in explorer fable-planner verifier coder engineer test-writer reviewer smoke-tester; do
   cp -a "$SRC/agents/$a.md" "$CLAUDE/agents/$a.md"
 done
+
+# The verifier's delta runner (verifier.md invokes it by this installed path).
+cp -a "$SRC/scripts/verify-against.ts" "$CLAUDE/scripts/verify-against.ts"
 
 # Pin the two Fable efforts (BSD + GNU sed compatible).
 sed -i.bak -E "s|^effort:.*|effort: ${PLAN_EFFORT}|" "$CLAUDE/agents/fable-planner.md"

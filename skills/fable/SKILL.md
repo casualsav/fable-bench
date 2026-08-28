@@ -39,8 +39,9 @@ raw dumps — into the brief. When the mapping is destined for a consult brief, 
 `explorer` to return NEUTRAL fact-maps (interfaces, call paths, invariants, line refs), not
 recommendations — driver-flavored conclusions re-anchor the exact frame the blind plan
 exists to avoid. Capture the project's **test / verify command** and RUN it once
-(inline or via `verifier`): the brief must state the baseline (`BASELINE: green`, or the
-red facts) so Fable never plans against a false premise, and S7 needs the command. Resolve
+(inline or via `verifier`): the brief must state the baseline WITH its provenance line
+(`BASELINE: green — MEASURED: <cmd> · <tree>`, or the red facts with theirs) so Fable
+never plans against a false premise, and S7 needs the command. Resolve
 every lookup yourself now (Lookup fence, below) so the brief carries established facts, not
 questions.
 
