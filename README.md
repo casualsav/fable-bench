@@ -142,12 +142,15 @@ The parent's model is not handed to the hook (measured 2026-09-20 against
 Claude Code 2.1.278: the hook input carries `agent_id`, `agent_type`, `effort`
 and the tool input but no model, and the hook's environment exposes
 `CLAUDE_EFFORT` and no model variable), so the hook reads the last assistant
-entry in `transcript_path`. Two measured limits: that entry is the *previous*
-turn's, because the message carrying this tool call has not been flushed yet;
-and a session's very first tool call has no assistant entry at all. When the
-reading is missing the hook **fails closed** — it applies the Fable rule and
-says so in the denial — except for `fable-planner`, which only a *proven* Fable
-parent blocks, so that `/fable` typed as a session's first action still works.
+entry in `transcript_path`. Measured limit: assistant entries are flushed a
+turn behind, so inside a session's **first** assistant turn there is nothing to
+read yet. When the reading is missing the hook **fails closed** — it applies the
+Fable rule and says so in the denial — except for `fable-planner`, which only a
+*proven* Fable parent blocks, so that `/fable` typed as a session's first action
+still works. Both branches were proved live on a Sonnet session against the
+installed hook (2026-09-20): a `general-purpose` spawn in the first turn was
+denied with the text above; the same spawn after one completed turn was allowed
+and ran.
 
 The decision reads the tool input, the installed agent files and that transcript
 only — no model call, no network.

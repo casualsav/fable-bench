@@ -52,7 +52,10 @@ export function decide(input: HookInput, roster: Roster, parent: Parent): Decisi
     ? ` Spawn a defined worker instead — ${workers.join(", ")} — or escalate one with a spawn-time \`model: sonnet\` / \`model: opus\`.`
     : "";
 
-  // No subagent may run on Fable, whatever the parent is.
+  // No subagent may run on Fable, whatever the parent is. The tool's `model`
+  // is an enum — sonnet | opus | haiku | fable on 2.1.278 — so in practice
+  // this catches the literal "fable"; the pattern also covers full ids and
+  // Mythos in case the enum widens.
   if (model && isFableModel(model))
     return { allow: false, reason: `fable-bench: subagent model "${model}" is Fable-tier — no subagent runs on Fable.${use}` };
 
