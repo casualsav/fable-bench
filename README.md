@@ -107,14 +107,47 @@ If you installed the plugin:
 /plugin marketplace remove casualsav/fable-bench
 ```
 
+`uninstall.sh` also removes the subagent guard's entry from
+`~/.claude/settings.json`, leaving every other hook in place.
+
 Either way, `/fable` writes nothing persistent beyond those files — its only
 runtime state is an in-session task checkpoint that lives and dies with the
 session — so nothing is left behind.
+
+## Subagent guard
+
+`install.sh` also registers a `PreToolUse` hook on the `Agent` tool in
+`~/.claude/settings.json`. An `Agent` call with no `model` inherits the
+**parent session's** model, so a Fable-led session that spawns
+`general-purpose` runs the whole fan-out at Fable rates — which is how one
+session turned five unnamed subagents into ~1,000 web fetches on 2026-09-20.
+
+The hook allows a spawn only when `subagent_type` names one of the workers
+installed above and that worker's frontmatter pins a non-Fable `model:`.
+Everything else is denied with a one-line reason that names the workers to use:
+`general-purpose`, `fork`, the built-in types, an agent with no pinned model,
+any spawn whose `model` names Fable or Mythos, and a call that passes only a
+`model` with no `subagent_type`. `fable-planner` is the one allowed
+Fable-pinned worker — it *is* the `/fable` plan.
+
+The rule applies **box-wide**, not only to Fable-led sessions: a `PreToolUse`
+hook is not told the parent's model (measured 2026-09-20 against Claude Code
+2.1.278 — the hook input carries `agent_id`, `agent_type`, `effort` and the
+tool input, but no model, and the hook's environment exposes `CLAUDE_EFFORT`
+and no model variable). So a Sonnet- or Opus-led session also loses
+`general-purpose`; use `researcher` / `explorer` instead, or escalate a worker
+with a spawn-time `model:` override.
+
+The decision reads the tool input and the installed agent files only — no model
+call, no network. Removing `~/.claude/fable-bench-agents` (or running
+`uninstall.sh`) makes the hook inert.
 
 ## Requirements
 
 - **Claude Fable 5** access (the planner agent is pinned to `model: claude-fable-5`; `install.sh` prompts
   for effort, recommended `high` — see below).
+- **`bun`** — for the subagent guard and the `verifier`'s delta runner. Without it `install.sh`
+  installs everything else and says plainly that the guard is not active.
 - **A harness that supports warm subagent-resume** (`SendMessage` to a spawned agent). The
   warm review resumes the plan agent; there is **no cold fallback**. If resume isn't available,
   `/fable` detects it at preflight and stops rather than half-running.
@@ -158,6 +191,9 @@ shipped default is `high`; edit the agent's `effort:` frontmatter to change it.)
 | `agents/test-writer.md` | Sonnet worker: characterization/regression tests; orchestrator escalates gnarly cases with a spawn-time model/effort override. |
 | `agents/reviewer.md` | Sonnet read-only gate: reviews worker diffs under a below-Fable driver (a Fable lead reads diffs itself); also the zero-Fable review tier and the degraded fallback when a warm-review handle is lost. |
 | `agents/smoke-tester.md` | Sonnet live prober: drives the real running app end-to-end post-deploy — green unit tests are not the finish line. |
+| `scripts/subagent-guard.ts` | The `PreToolUse` hook on the `Agent` tool: allows only the workers above, denies anything that would inherit the session's model. |
+| `scripts/install-subagent-guard.ts` | Merges (and removes) that hook in `~/.claude/settings.json`, touching no other key. |
+| `subagent-guard.test.ts` | `bun test` over the guard's decision rule and the settings merge. |
 | `install.sh` / `uninstall.sh` | User-level install of the skill + agents into `~/.claude` (`$CLAUDE_CONFIG_DIR`), giving bare `/fable`. |
 | `.claude-plugin/` | Manifests for the alternative `/plugin` install (namespaced `/fable-bench:fable`). |
 

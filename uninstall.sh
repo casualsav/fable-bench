@@ -12,6 +12,12 @@ done
 rm -f "$CLAUDE/fable-auto.on"
 rm -f "$CLAUDE/scripts/verify-against.ts"
 
+# Subagent guard: drop its settings.json entry before removing its script.
+if command -v bun >/dev/null 2>&1 && [ -f "$CLAUDE/scripts/install-subagent-guard.ts" ]; then
+  bun "$CLAUDE/scripts/install-subagent-guard.ts" "$CLAUDE/settings.json" --uninstall
+fi
+rm -f "$CLAUDE/scripts/subagent-guard.ts" "$CLAUDE/scripts/install-subagent-guard.ts" "$CLAUDE/fable-bench-agents"
+
 CMD="$CLAUDE/CLAUDE.md"
 if [ -f "$CMD" ]; then
   for pair in fable-bench fable-auto; do

@@ -48,12 +48,26 @@ rm -rf "$CLAUDE/skills/fable" "$CLAUDE/skills/oracle" "$CLAUDE/skills/fable-meth
 cp -a "$SRC/skills/fable" "$CLAUDE/skills/fable"
 cp -a "$SRC/skills/fable-method" "$CLAUDE/skills/fable-method"
 
-for a in explorer researcher fable-planner verifier coder engineer test-writer reviewer smoke-tester; do
+AGENTS="explorer researcher fable-planner verifier coder engineer test-writer reviewer smoke-tester"
+for a in $AGENTS; do
   cp -a "$SRC/agents/$a.md" "$CLAUDE/agents/$a.md"
 done
 
 # The verifier's delta runner (verifier.md invokes it by this installed path).
 cp -a "$SRC/scripts/verify-against.ts" "$CLAUDE/scripts/verify-against.ts"
+
+# The subagent guard: a PreToolUse hook on the Agent tool that allows only the
+# workers above. An Agent call with no model inherits the PARENT session's
+# model, so an unnamed subagent of a Fable-led session runs at Fable rates.
+# The roster it allows is this list, recorded where the hook can read it.
+cp -a "$SRC/scripts/subagent-guard.ts" "$CLAUDE/scripts/subagent-guard.ts"
+cp -a "$SRC/scripts/install-subagent-guard.ts" "$CLAUDE/scripts/install-subagent-guard.ts"
+printf '%s\n' $AGENTS > "$CLAUDE/fable-bench-agents"
+GUARD=skipped
+if command -v bun >/dev/null 2>&1; then
+  bun "$CLAUDE/scripts/install-subagent-guard.ts" "$CLAUDE/settings.json" "$CLAUDE/scripts/subagent-guard.ts"
+  GUARD=installed
+fi
 
 # Pin the two Fable efforts (BSD + GNU sed compatible).
 sed -i.bak -E "s|^effort:.*|effort: ${PLAN_EFFORT}|" "$CLAUDE/agents/fable-planner.md"
@@ -86,5 +100,12 @@ fi
 echo "  /fable       : Fable plans, you execute (on demand)"
 echo "  agents       : fable-planner + explorer, researcher, verifier, coder,"
 echo "                 engineer, test-writer, reviewer, smoke-tester"
+if [ "$GUARD" = installed ]; then
+  echo "  subagent guard: PreToolUse hook on Agent in settings.json — only the"
+  echo "                 agents above may be spawned (no general-purpose, no Fable)"
+else
+  echo "  subagent guard: NOT INSTALLED — bun is missing. Unnamed subagents will"
+  echo "                 keep inheriting the session model, Fable included."
+fi
 echo
 echo "Restart / reload your session."
