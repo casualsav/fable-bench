@@ -116,44 +116,48 @@ session — so nothing is left behind.
 
 ## Subagent guard
 
-`install.sh` also registers a `PreToolUse` hook on the `Agent` tool in
-`~/.claude/settings.json`. An `Agent` call whose `subagent_type` pins no model
-inherits the **parent session's** model, so a Fable-led session that spawns
-`general-purpose` runs the whole fan-out at Fable rates — which is how one
-session turned five unnamed subagents into ~1,000 web fetches on 2026-09-20.
+An `Agent` call whose `subagent_type` pins no model inherits the **parent
+session's** model. That is how one Fable-led session turned five unnamed
+subagents into ~1,000 web fetches at Fable rates on 2026-09-20. `install.sh`
+closes it in `~/.claude/settings.json` two ways, box-wide:
 
-The hook reads the parent's model off the session transcript and decides:
+**A fallback model.** `"env": { "CLAUDE_CODE_SUBAGENT_MODEL": "opus" }`. A
+subagent that names no model runs on Opus instead of inheriting — one step down
+from Fable rather than two. An agent file's frontmatter `model:` still wins over
+it, so every worker below keeps its own pinning; only the never-pinned spawns
+move. The forcing variant of that variable, which would override frontmatter
+too, is deliberately not used.
 
-- **Always denied, under any parent:** a spawn whose `model` names Fable or
-  Mythos. No subagent runs on Fable.
-- **Always allowed:** a `subagent_type` whose installed agent file pins a
-  non-Fable `model:` — it cannot inherit. So every worker below, and any other
-  agent you have installed under `~/.claude/agents` that pins its model. Also
-  any call that passes an explicit non-Fable `model` of its own.
-- **Denied only under a Fable-led parent:** anything that would inherit —
-  `general-purpose`, `fork`, `Explore`, `Plan`, an agent file with no `model:`,
-  or a call with no `subagent_type` at all. The denial names the workers to use.
-  `fable-planner` is denied here too: a Fable lead is already the planner.
-- **Under a Sonnet- or Opus-led parent** those inheriting spawns are allowed —
-  they inherit Sonnet or Opus, which nobody forbade — and `/fable` can spawn
-  `fable-planner` as usual.
+**A `PreToolUse` hook** on the `Agent` tool, which decides from the tool input,
+the installed agent files, the session transcript and its own environment — no
+model call, no network:
+
+- **Denied under any parent:** a spawn whose `model` names Fable or Mythos, and
+  a fallback that itself names Fable. No subagent runs on Fable.
+- **Allowed under any parent:** a `subagent_type` whose agent file pins a
+  non-Fable `model:` — it cannot inherit — and any call passing an explicit
+  non-Fable `model`.
+- **Unnamed and inheriting spawns** (`general-purpose`, `fork`, `Explore`,
+  `Plan`, an agent file with no `model:`, a call with no `subagent_type`) are
+  allowed, because the fallback catches them. Under a Fable-led parent the hook
+  adds a one-line non-blocking notice that a defined worker is preferred. If the
+  fallback is **missing** from the session, those spawns would inherit again, so
+  the hook denies them under a Fable-led parent and says which variable is gone.
+- **`fable-planner`** is denied under a Fable-led parent: its frontmatter pins
+  Fable, the fallback cannot touch that, and a Fable lead is already the planner.
+  Below-Fable parents spawn it as usual — that is what `/fable` is.
 
 The parent's model is not handed to the hook (measured 2026-09-20 against
 Claude Code 2.1.278: the hook input carries `agent_id`, `agent_type`, `effort`
 and the tool input but no model, and the hook's environment exposes
 `CLAUDE_EFFORT` and no model variable), so the hook reads the last assistant
-entry in `transcript_path`. Measured limit: assistant entries are flushed a
-turn behind, so inside a session's **first** assistant turn there is nothing to
-read yet. When the reading is missing the hook **fails closed** — it applies the
-Fable rule and says so in the denial — except for `fable-planner`, which only a
-*proven* Fable parent blocks, so that `/fable` typed as a session's first action
-still works. Both branches were proved live on a Sonnet session against the
-installed hook (2026-09-20): a `general-purpose` spawn in the first turn was
-denied with the text above; the same spawn after one completed turn was allowed
-and ran.
+entry in `transcript_path`. Measured limit: assistant entries are flushed a turn
+behind, so inside a session's **first** assistant turn there is nothing to read
+yet; that reads unknown and is treated as Fable, which only matters when the
+fallback is also missing.
 
-The decision reads the tool input, the installed agent files and that transcript
-only — no model call, no network.
+`uninstall.sh` removes the hook entry and that one env key — and only if it
+still holds the value we wrote — leaving every other hook and variable in place.
 
 ## Requirements
 
