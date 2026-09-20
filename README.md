@@ -108,7 +108,7 @@ If you installed the plugin:
 ```
 
 `uninstall.sh` also removes the subagent guard's entry from
-`~/.claude/settings.json`, leaving every other hook in place.
+`~/.claude/settings.json`, leaving every other hook and setting in place.
 
 Either way, `/fable` writes nothing persistent beyond those files — its only
 runtime state is an in-session task checkpoint that lives and dies with the
@@ -119,33 +119,28 @@ session — so nothing is left behind.
 An `Agent` call whose `subagent_type` pins no model inherits the **parent
 session's** model. That is how one Fable-led session turned five unnamed
 subagents into ~1,000 web fetches at Fable rates on 2026-09-20. `install.sh`
-closes it in `~/.claude/settings.json` two ways, box-wide:
+registers a `PreToolUse` hook on the `Agent` tool in `~/.claude/settings.json`
+to close it — a hook rather than a setting, because the rule is for Fable-led
+sessions only and a settings default would be box-wide.
 
-**A fallback model.** `"env": { "CLAUDE_CODE_SUBAGENT_MODEL": "opus" }`. A
-subagent that names no model runs on Opus instead of inheriting — one step down
-from Fable rather than two. An agent file's frontmatter `model:` still wins over
-it, so every worker below keeps its own pinning; only the never-pinned spawns
-move. The forcing variant of that variable, which would override frontmatter
-too, is deliberately not used.
+The hook decides from the tool input, the installed agent files and the session
+transcript — no model call, no network:
 
-**A `PreToolUse` hook** on the `Agent` tool, which decides from the tool input,
-the installed agent files, the session transcript and its own environment — no
-model call, no network:
-
-- **Denied under any parent:** a spawn whose `model` names Fable or Mythos, and
-  a fallback that itself names Fable. No subagent runs on Fable.
-- **Allowed under any parent:** a `subagent_type` whose agent file pins a
+- **Under a Fable-led parent**, a spawn that would inherit — `general-purpose`,
+  `fork`, `Explore`, `Plan`, an agent file with no `model:`, a call with no
+  `subagent_type` — is **rewritten** to `model: opus` (one step down from Fable
+  rather than two) via `hookSpecificOutput.updatedInput`, and carries a
+  one-line notice that a defined worker is preferred. The call is not blocked.
+- **Under a Sonnet- or Opus-led parent**, nothing happens at all: no rewrite,
+  no notice. Their subagents inherit exactly as they did before.
+- **Always allowed untouched:** a `subagent_type` whose agent file pins a
   non-Fable `model:` — it cannot inherit — and any call passing an explicit
   non-Fable `model`.
-- **Unnamed and inheriting spawns** (`general-purpose`, `fork`, `Explore`,
-  `Plan`, an agent file with no `model:`, a call with no `subagent_type`) are
-  allowed, because the fallback catches them. Under a Fable-led parent the hook
-  adds a one-line non-blocking notice that a defined worker is preferred. If the
-  fallback is **missing** from the session, those spawns would inherit again, so
-  the hook denies them under a Fable-led parent and says which variable is gone.
-- **`fable-planner`** is denied under a Fable-led parent: its frontmatter pins
-  Fable, the fallback cannot touch that, and a Fable lead is already the planner.
-  Below-Fable parents spawn it as usual — that is what `/fable` is.
+- **Always denied:** a spawn whose `model` names Fable or Mythos. No subagent
+  runs on Fable.
+- **`fable-planner` is denied under a Fable-led parent**: its frontmatter pins
+  Fable, a frontmatter pin beats the tool input, and a Fable lead is already
+  the planner. Below-Fable parents spawn it as usual — that is what `/fable` is.
 
 The parent's model is not handed to the hook (measured 2026-09-20 against
 Claude Code 2.1.278: the hook input carries `agent_id`, `agent_type`, `effort`
@@ -153,11 +148,15 @@ and the tool input but no model, and the hook's environment exposes
 `CLAUDE_EFFORT` and no model variable), so the hook reads the last assistant
 entry in `transcript_path`. Measured limit: assistant entries are flushed a turn
 behind, so inside a session's **first** assistant turn there is nothing to read
-yet; that reads unknown and is treated as Fable, which only matters when the
-fallback is also missing.
+yet. That reads unknown and **fails closed** — the spawn is pinned to Opus
+rather than left to inherit — except for `fable-planner`, which only a *proven*
+Fable parent blocks, so `/fable` typed as a session's first action still works.
 
-`uninstall.sh` removes the hook entry and that one env key — and only if it
-still holds the value we wrote — leaving every other hook and variable in place.
+Both mechanisms were proved live on 2.1.278 with throwaway Sonnet sessions: a
+hook's `updatedInput` really does change the model the subagent runs on (a
+`general-purpose` spawn came back as `claude-haiku-4-5-20251001` after a probe
+hook pinned it), and `additionalContext` on an allowed call reaches the model as
+a system-reminder without blocking it.
 
 ## Requirements
 

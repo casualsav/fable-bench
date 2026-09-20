@@ -1,9 +1,8 @@
 #!/usr/bin/env bun
-// Merge (or remove) the subagent guard's two pieces of a Claude Code
-// settings.json: its PreToolUse entry, and the box-wide default model for
-// subagents that name none. settings.json is live config with other tools'
-// hooks in it, so this never rewrites the file wholesale — it touches our hook
-// entry and our one env key, and leaves every other key untouched.
+// Merge (or remove) the subagent guard's PreToolUse entry in a Claude Code
+// settings.json. settings.json is live config with other tools' hooks in it,
+// so this never rewrites the file wholesale: it drops the entries carrying our
+// MARKER and appends one fresh entry, leaving every other key untouched.
 //
 // Usage: bun install-subagent-guard.ts <settings.json> <script-path> [--uninstall]
 import { readFileSync, writeFileSync, renameSync, existsSync } from "node:fs";
@@ -12,12 +11,13 @@ import { readFileSync, writeFileSync, renameSync, existsSync } from "node:fs";
 export const MARKER = "fable-bench:subagent-guard";
 
 /**
- * A subagent that names no model falls back to this instead of inheriting the
- * parent's. Opus is one step down from Fable rather than two (owner's ruling,
- * 2026-09-20), and it is what makes an unnamed spawn under a Fable lead safe.
+ * A settings.json default for unnamed subagents, which an earlier fable-bench
+ * install wrote here. It is box-wide, and the fallback was only ever meant for
+ * Fable-led sessions (owner's ruling, 2026-09-20), so the hook now pins those
+ * spawns itself and this key is removed wherever we put it.
  */
-export const SUBAGENT_MODEL_KEY = "CLAUDE_CODE_SUBAGENT_MODEL";
-export const SUBAGENT_MODEL = "opus";
+export const STALE_ENV_KEY = "CLAUDE_CODE_SUBAGENT_MODEL";
+export const STALE_ENV_VALUE = "opus";
 
 type Entry = { matcher?: string; hooks?: { type?: string; command?: string }[] };
 
@@ -41,15 +41,14 @@ export function mergeSettings(settings: Record<string, any>, scriptPath: string,
   if (Object.keys(hooks).length > 0) out.hooks = hooks;
   else delete out.hooks;
 
+  // Installing and uninstalling both clear the stale box-wide default, and only
+  // while it still reads what we wrote — a hand-set default is somebody else's.
   const env = { ...(out.env ?? {}) };
-  if (uninstall) {
-    // Only our own value comes out. A hand-set default is somebody else's key.
-    if (env[SUBAGENT_MODEL_KEY] === SUBAGENT_MODEL) delete env[SUBAGENT_MODEL_KEY];
-  } else {
-    env[SUBAGENT_MODEL_KEY] = SUBAGENT_MODEL;
+  if (env[STALE_ENV_KEY] === STALE_ENV_VALUE) {
+    delete env[STALE_ENV_KEY];
+    if (Object.keys(env).length > 0) out.env = env;
+    else delete out.env;
   }
-  if (Object.keys(env).length > 0) out.env = env;
-  else delete out.env;
 
   return out;
 }

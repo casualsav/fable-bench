@@ -3,21 +3,21 @@
 //
 // The hazard the owner named (2026-09-20): an Agent call that pins no model
 // inherits the PARENT session's model, so a Fable-led session spawning
-// `general-purpose` ran the fan-out at Fable rates. install.sh now sets a
-// box-wide fallback (CLAUDE_CODE_SUBAGENT_MODEL=opus), so such a spawn lands
-// on Opus instead; the guard is what holds when that default is missing, and
-// what refuses Fable outright.
+// `general-purpose` ran the fan-out at Fable rates. The fix applies to
+// Fable-led sessions ONLY, so it lives in the hook rather than in a box-wide
+// setting: under a Fable parent the guard rewrites the call to `model: opus`;
+// a Sonnet- or Opus-led parent passes through untouched.
 import { test, expect } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  decide, loadRoster, parentModel, frontmatterModel, denyPayload, noticePayload, MANIFEST,
-  type Roster, type Parent,
+  decide, loadRoster, parentModel, frontmatterModel, denyPayload, allowPayload,
+  MANIFEST, FALLBACK_MODEL, type Roster, type Parent,
 } from "./scripts/subagent-guard.ts";
 import {
-  mergeSettings, guardEntry, MARKER, SUBAGENT_MODEL_KEY, SUBAGENT_MODEL,
+  mergeSettings, guardEntry, MARKER, STALE_ENV_KEY, STALE_ENV_VALUE,
 } from "./scripts/install-subagent-guard.ts";
 
 const ROSTER: Roster = new Map([
@@ -37,79 +37,66 @@ const ROSTER: Roster = new Map([
 const PARENTS: Parent[] = ["fable", "safe", "unknown"];
 const INHERITING = ["general-purpose", "fork", "Explore", "Plan", "claude", "claude-code-guide", "unpinned"];
 
-const call = (tool_input: Record<string, unknown>, parent: Parent, subagentDefault = "opus", tool_name = "Agent") =>
-  decide({ tool_name, tool_input }, ROSTER, parent, subagentDefault);
+const call = (tool_input: Record<string, unknown>, parent: Parent, tool_name = "Agent") =>
+  decide({ tool_name, tool_input }, ROSTER, parent);
 
-// ---- with the Opus fallback installed (the shipped state) ---------------------
+// ---- under a Fable-led parent: rewritten, not blocked ------------------------
 
-test("a Fable parent may spawn an unnamed subagent — it lands on the Opus fallback", () => {
-  for (const t of INHERITING) expect(call({ subagent_type: t, prompt: "go" }, "fable").allow).toBe(true);
-  expect(call({ prompt: "go" }, "fable").allow).toBe(true);
+test("a Fable parent's inheriting spawn is rewritten to the Opus fallback", () => {
+  for (const t of INHERITING) {
+    const d = call({ subagent_type: t, prompt: "go" }, "fable");
+    expect(d.allow).toBe(true);
+    expect(d.allow && d.updatedInput).toEqual({ subagent_type: t, prompt: "go", model: FALLBACK_MODEL });
+  }
 });
 
-test("a Fable parent is told, without being blocked, to prefer a defined worker", () => {
+test("the rewrite keeps the rest of the tool input intact", () => {
+  const d = call({ subagent_type: "general-purpose", prompt: "go", description: "d", run_in_background: true }, "fable");
+  expect(d.allow && d.updatedInput).toEqual({
+    subagent_type: "general-purpose", prompt: "go", description: "d", run_in_background: true, model: FALLBACK_MODEL,
+  });
+});
+
+test("the rewritten call carries a notice naming the defined workers", () => {
   const d = call({ subagent_type: "general-purpose" }, "fable");
-  expect(d.allow).toBe(true);
-  expect(d.allow && d.notice).toContain("runs on opus");
+  expect(d.allow && d.notice).toContain(`pinned this spawn to ${FALLBACK_MODEL}`);
   expect(d.allow && d.notice).toContain("researcher");
 });
 
-test("a below-Fable parent gets no notice — preferring the workers is a Fable-lead rule", () => {
-  for (const parent of ["safe", "unknown"] as Parent[])
-    expect(call({ subagent_type: "general-purpose" }, parent).allow && call({ subagent_type: "general-purpose" }, parent).notice).toBeUndefined();
-});
-
-test("a Fable parent still may not spawn fable-planner — it is pinned to Fable and is already the planner", () => {
+test("a Fable parent still may not spawn fable-planner — its frontmatter pin beats any rewrite", () => {
   const d = call({ subagent_type: "fable-planner", prompt: "plan" }, "fable");
   expect(d.allow).toBe(false);
   expect(!d.allow && d.reason).toContain("already the planner");
 });
 
-test("a below-Fable parent may spawn fable-planner — that is what /fable is", () => {
-  for (const parent of ["safe", "unknown"] as Parent[])
-    expect(call({ subagent_type: "fable-planner", prompt: "plan" }, parent).allow).toBe(true);
+test("a Fable parent's defined workers are passed through untouched", () => {
+  for (const t of ["coder", "explorer", "researcher", "engineer", "verifier", "broker-verifier", "assistant"])
+    expect(call({ subagent_type: t, prompt: "go" }, "fable")).toEqual({ allow: true });
 });
 
-test("every worker pinned to a non-Fable model is allowed under every parent", () => {
-  for (const parent of PARENTS)
-    for (const t of ["coder", "explorer", "researcher", "engineer", "verifier", "broker-verifier"])
-      expect(call({ subagent_type: t, prompt: "go" }, parent).allow).toBe(true);
+// ---- under a below-Fable parent: nothing happens at all ----------------------
+
+test("a proven non-Fable parent is never rewritten and never nudged", () => {
+  for (const t of [...INHERITING, "coder", "assistant", "fable-planner"])
+    expect(call({ subagent_type: t, prompt: "go" }, "safe")).toEqual({ allow: true });
+  expect(call({ prompt: "go" }, "safe")).toEqual({ allow: true });
 });
 
-test("the bridge's own `assistant` agent is never denied", () => {
-  for (const parent of PARENTS)
-    for (const def of ["opus", ""])
-      expect(call({ subagent_type: "assistant", prompt: "look" }, parent, def).allow).toBe(true);
+test("the bridge's own `assistant` agent is never denied and never rewritten", () => {
+  for (const parent of PARENTS) expect(call({ subagent_type: "assistant", prompt: "look" }, parent)).toEqual({ allow: true });
 });
 
-// ---- when the fallback is missing, the old inheritance hazard is back ---------
+// ---- when the parent cannot be read ------------------------------------------
 
-test("without the fallback a Fable parent may not spawn anything that would inherit", () => {
-  for (const t of INHERITING) {
-    const d = call({ subagent_type: t, prompt: "go" }, "fable", "");
-    expect(d.allow).toBe(false);
-    expect(!d.allow && d.reason).toContain("no CLAUDE_CODE_SUBAGENT_MODEL default");
-    expect(!d.allow && d.reason).toContain("install.sh");
-  }
+test("an unreadable parent fails closed — rewritten, never left to inherit", () => {
+  const d = call({ subagent_type: "general-purpose" }, "unknown");
+  expect(d.allow).toBe(true);
+  expect(d.allow && d.updatedInput?.model).toBe(FALLBACK_MODEL);
+  expect(d.allow && d.notice).toContain("could not be read");
 });
 
-test("without the fallback an unreadable parent fails closed, and the denial says so", () => {
-  const d = call({ subagent_type: "general-purpose" }, "unknown", "");
-  expect(d.allow).toBe(false);
-  expect(!d.allow && d.reason).toContain("could not be read");
-});
-
-test("without the fallback a provably non-Fable parent is still fine — it inherits Sonnet or Opus", () => {
-  for (const t of INHERITING) expect(call({ subagent_type: t, prompt: "go" }, "safe", "").allow).toBe(true);
-  expect(call({ prompt: "go" }, "safe", "").allow).toBe(true);
-});
-
-test("a fallback that itself names Fable is refused under every parent", () => {
-  for (const parent of PARENTS) {
-    const d = call({ subagent_type: "general-purpose" }, parent, "fable");
-    expect(d.allow).toBe(false);
-    expect(!d.allow && d.reason).toContain("no subagent runs on Fable");
-  }
+test("failing closed does not block fable-planner — only a proven Fable parent does", () => {
+  expect(call({ subagent_type: "fable-planner" }, "unknown")).toEqual({ allow: true });
 });
 
 // ---- the model parameter ------------------------------------------------------
@@ -119,30 +106,31 @@ test("a Fable model is denied under every parent, however it is spelled", () => 
     for (const parent of PARENTS) {
       const d = call({ subagent_type: "explorer", model }, parent);
       expect(d.allow).toBe(false);
-      expect(!d.allow && d.reason).toContain("Fable-tier");
+      expect(!d.allow && d.reason).toContain(`model: ${FALLBACK_MODEL}`);
     }
 });
 
-test("an explicit non-Fable model is always allowed — it pins, so it cannot inherit", () => {
-  expect(call({ subagent_type: "general-purpose", model: "sonnet" }, "fable", "").allow).toBe(true);
-  expect(call({ subagent_type: "explorer", model: "opus" }, "fable", "").allow).toBe(true);
-  expect(call({ model: "sonnet", prompt: "go" }, "fable", "").allow).toBe(true);
+test("an explicit non-Fable model is always allowed untouched — it pins, so it cannot inherit", () => {
+  expect(call({ subagent_type: "general-purpose", model: "sonnet" }, "fable")).toEqual({ allow: true });
+  expect(call({ subagent_type: "explorer", model: "opus" }, "fable")).toEqual({ allow: true });
+  expect(call({ model: "sonnet", prompt: "go" }, "fable")).toEqual({ allow: true });
 });
 
 // ---- plumbing -----------------------------------------------------------------
 
 test("the legacy `Task` tool name is guarded too, and other tools are not", () => {
-  expect(call({ subagent_type: "general-purpose" }, "fable", "", "Task").allow).toBe(false);
-  expect(call({ command: "ls" }, "fable", "", "Bash").allow).toBe(true);
+  expect(call({ subagent_type: "general-purpose" }, "fable", "Task").allow).toBe(true);
+  expect(call({ subagent_type: "general-purpose" }, "fable", "Task").allow && call({ subagent_type: "general-purpose" }, "fable", "Task").updatedInput?.model).toBe(FALLBACK_MODEL);
+  expect(call({ command: "ls" }, "fable", "Bash")).toEqual({ allow: true });
 });
 
 test("the payloads are the documented PreToolUse forms", () => {
   expect(JSON.parse(denyPayload("nope"))).toEqual({
     hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "nope" },
   });
-  // No permissionDecision: the call proceeds and the session just reads this.
-  expect(JSON.parse(noticePayload("fyi"))).toEqual({
-    hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: "fyi" },
+  // No permissionDecision: the call proceeds, with a new input and a line to read.
+  expect(JSON.parse(allowPayload({ updatedInput: { model: "opus" }, notice: "fyi" }))).toEqual({
+    hookSpecificOutput: { hookEventName: "PreToolUse", updatedInput: { model: "opus" }, additionalContext: "fyi" },
   });
 });
 
@@ -168,8 +156,9 @@ test("loadRoster reads every installed agent file and marks fable-bench's own", 
     expect(roster.get("explorer")).toEqual({ model: "claude-sonnet-5", fableBench: true });
     expect(roster.get("assistant")).toEqual({ model: "claude-sonnet-5" });
     expect(roster.get("unpinned")?.model).toBeUndefined();
-    expect(decide({ tool_name: "Agent", tool_input: { subagent_type: "assistant" } }, roster, "fable", "").allow).toBe(true);
-    expect(decide({ tool_name: "Agent", tool_input: { subagent_type: "unpinned" } }, roster, "fable", "").allow).toBe(false);
+    expect(decide({ tool_name: "Agent", tool_input: { subagent_type: "assistant" } }, roster, "fable")).toEqual({ allow: true });
+    const d = decide({ tool_name: "Agent", tool_input: { subagent_type: "unpinned" } }, roster, "fable");
+    expect(d.allow && d.updatedInput?.model).toBe(FALLBACK_MODEL);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -209,43 +198,41 @@ test("parentModel reads the driving model off the transcript tail", () => {
   }
 });
 
-test("the hook binary reads the fallback out of its own environment", () => {
+test("the hook binary rewrites under a Fable transcript and says nothing under a Sonnet one", () => {
   const dir = mkdtempSync(join(tmpdir(), "subguard-e2e-"));
   try {
     mkdirSync(join(dir, "agents"));
-    writeFileSync(join(dir, MANIFEST), "explorer\ncoder\n");
+    writeFileSync(join(dir, MANIFEST), "explorer\ncoder\nfable-planner\n");
     for (const a of ["explorer", "coder"])
       writeFileSync(join(dir, "agents", `${a}.md`), `---\nname: ${a}\nmodel: claude-sonnet-5\n---\nbody\n`);
-    const transcript = join(dir, "t.jsonl");
-    writeFileSync(transcript, JSON.stringify({ type: "assistant", message: { model: "claude-fable-5-1" } }) + "\n");
-    const run = (tool_input: Record<string, unknown>, fallback?: string) => {
-      const env: Record<string, string> = { ...process.env, CLAUDE_CONFIG_DIR: dir };
-      if (fallback === undefined) delete env[SUBAGENT_MODEL_KEY];
-      else env[SUBAGENT_MODEL_KEY] = fallback;
-      return spawnSync("bun", [join(import.meta.dir, "scripts", "subagent-guard.ts")], {
-        input: JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Agent", tool_input, transcript_path: transcript }),
-        env,
+    writeFileSync(join(dir, "agents", "fable-planner.md"), "---\nname: fable-planner\nmodel: claude-fable-5\n---\nbody\n");
+    const transcript = (name: string, model: string) => {
+      const p = join(dir, name);
+      writeFileSync(p, JSON.stringify({ type: "assistant", message: { model } }) + "\n");
+      return p;
+    };
+    const fable = transcript("fable.jsonl", "claude-fable-5-1");
+    const sonnet = transcript("sonnet.jsonl", "claude-sonnet-5");
+    const run = (tool_input: Record<string, unknown>, transcript_path: string) =>
+      spawnSync("bun", [join(import.meta.dir, "scripts", "subagent-guard.ts")], {
+        input: JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Agent", tool_input, transcript_path }),
+        env: { ...process.env, CLAUDE_CONFIG_DIR: dir },
         encoding: "utf8",
       });
-    };
 
-    // Fable parent, fallback installed: allowed, with the prefer-a-worker notice.
-    const noticed = run({ subagent_type: "general-purpose", prompt: "go" }, "opus");
-    expect(noticed.status).toBe(0);
-    expect(JSON.parse(noticed.stdout).hookSpecificOutput.additionalContext).toContain("runs on opus");
-    expect(JSON.parse(noticed.stdout).hookSpecificOutput.permissionDecision).toBeUndefined();
+    const rewritten = run({ subagent_type: "general-purpose", prompt: "go" }, fable);
+    expect(rewritten.status).toBe(0);
+    const out = JSON.parse(rewritten.stdout).hookSpecificOutput;
+    expect(out.updatedInput).toEqual({ subagent_type: "general-purpose", prompt: "go", model: FALLBACK_MODEL });
+    expect(out.additionalContext).toContain("explorer");
+    expect(out.permissionDecision).toBeUndefined();
 
-    // Same call with the fallback missing: denied.
-    const denied = run({ subagent_type: "general-purpose", prompt: "go" });
+    // Same call from a Sonnet-led session: nothing at all.
+    expect(run({ subagent_type: "general-purpose", prompt: "go" }, sonnet).stdout.trim()).toBe("");
+    expect(run({ subagent_type: "coder", prompt: "fix" }, fable).stdout.trim()).toBe("");
+
+    const denied = run({ subagent_type: "fable-planner", prompt: "plan" }, fable);
     expect(JSON.parse(denied.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
-    expect(JSON.parse(denied.stdout).hookSpecificOutput.permissionDecisionReason).toContain("explorer");
-
-    // "inherit" is the CLI's own word for no default, so it is not a fallback.
-    expect(JSON.parse(run({ subagent_type: "general-purpose" }, "inherit").stdout).hookSpecificOutput.permissionDecision).toBe("deny");
-
-    const allowed = run({ subagent_type: "coder", prompt: "fix" }, "opus");
-    expect(allowed.status).toBe(0);
-    expect(allowed.stdout.trim()).toBe("");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -253,44 +240,47 @@ test("the hook binary reads the fallback out of its own environment", () => {
 
 // ---- the settings.json merge --------------------------------------------------
 
-test("mergeSettings adds the guard and the fallback without disturbing anything else", () => {
+test("mergeSettings adds the guard without disturbing other hooks, and is idempotent", () => {
   const other = { matcher: "Bash", hooks: [{ type: "command", command: "rtk hook claude" }] };
   const before = { model: "haiku", env: { TELEGRAM_PORT: "8795" }, hooks: { PreToolUse: [other], Stop: [{ hooks: [] }] } };
   const once = mergeSettings(before, "/c/scripts/subagent-guard.ts");
   expect(once.hooks.PreToolUse).toEqual([other, guardEntry("/c/scripts/subagent-guard.ts")]);
   expect(once.hooks.Stop).toEqual(before.hooks.Stop);
-  expect(once.env).toEqual({ TELEGRAM_PORT: "8795", [SUBAGENT_MODEL_KEY]: SUBAGENT_MODEL });
+  expect(once.env).toEqual({ TELEGRAM_PORT: "8795" });
   expect(once.model).toBe("haiku");
   expect(mergeSettings(once, "/c/scripts/subagent-guard.ts")).toEqual(once);
   const moved = mergeSettings(once, "/other/subagent-guard.ts");
   expect(moved.hooks.PreToolUse.filter((e: any) => e.hooks[0].command.includes(MARKER))).toHaveLength(1);
 });
 
-test("mergeSettings creates the env block when the file has none", () => {
-  const fresh = mergeSettings({}, "/c/g.ts");
-  expect(fresh.env).toEqual({ [SUBAGENT_MODEL_KEY]: SUBAGENT_MODEL });
+test("the guard writes no env at all, and clears the box-wide default it used to write", () => {
+  // A settings.json with no env block stays that way.
+  expect(mergeSettings({}, "/c/g.ts").env).toBeUndefined();
+  // One an earlier install wrote is cleared, on install and on uninstall alike.
+  const stale = { env: { TELEGRAM_PORT: "8795", [STALE_ENV_KEY]: STALE_ENV_VALUE } };
+  expect(mergeSettings(stale, "/c/g.ts").env).toEqual({ TELEGRAM_PORT: "8795" });
+  expect(mergeSettings(stale, "", true).env).toEqual({ TELEGRAM_PORT: "8795" });
+  // The whole env block goes if that was all it held.
+  expect(mergeSettings({ env: { [STALE_ENV_KEY]: STALE_ENV_VALUE } }, "/c/g.ts").env).toBeUndefined();
+  // A default somebody else set by hand is not ours to remove.
+  const handSet = { env: { [STALE_ENV_KEY]: "haiku" } };
+  expect(mergeSettings(handSet, "/c/g.ts").env).toEqual({ [STALE_ENV_KEY]: "haiku" });
 });
 
-test("the fallback is the plain default and never the forcing variant", () => {
-  const merged = mergeSettings({}, "/c/g.ts");
-  expect(SUBAGENT_MODEL).toBe("opus");
-  expect(Object.keys(merged.env)).toEqual([SUBAGENT_MODEL_KEY]);
-  // A forcing default would override each agent's own frontmatter model.
-  const sources = ["install.sh", "uninstall.sh", "scripts/subagent-guard.ts", "scripts/install-subagent-guard.ts"]
+test("the sources never write an env default or the forcing variant", () => {
+  const sources = ["install.sh", "uninstall.sh", "scripts/subagent-guard.ts"]
     .map((f) => readFileSync(join(import.meta.dir, f), "utf8"))
     .join("\n");
-  expect(sources).not.toContain(`${SUBAGENT_MODEL_KEY}_FORCE`);
+  expect(sources).not.toContain(STALE_ENV_KEY);
+  expect(readFileSync(join(import.meta.dir, "scripts", "install-subagent-guard.ts"), "utf8"))
+    .not.toContain(`${STALE_ENV_KEY}_FORCE`);
 });
 
-test("mergeSettings --uninstall removes only what we installed", () => {
+test("mergeSettings --uninstall removes only our entry", () => {
   const other = { matcher: "Bash", hooks: [{ type: "command", command: "rtk hook claude" }] };
   const original = { env: { TELEGRAM_PORT: "8795" }, hooks: { PreToolUse: [other] } };
   expect(mergeSettings(mergeSettings(original, "/c/g.ts"), "", true)).toEqual(original);
-  // Nothing of ours left behind: no empty env or hooks keys.
   expect(mergeSettings(mergeSettings({}, "/c/g.ts"), "", true)).toEqual({});
-  // A default somebody else set by hand is not ours to remove.
-  const handSet = { env: { [SUBAGENT_MODEL_KEY]: "haiku" } };
-  expect(mergeSettings(handSet, "", true)).toEqual(handSet);
 });
 
 test("the installer CLI installs, re-installs without duplicating, and uninstalls", () => {
@@ -303,13 +293,14 @@ test("the installer CLI installs, re-installs without duplicating, and uninstall
       env: { TELEGRAM_PORT: "8795" },
       hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "rtk" }] }] },
     };
-    writeFileSync(file, JSON.stringify(original, null, 2));
+    writeFileSync(file, JSON.stringify({ ...original, env: { ...original.env, [STALE_ENV_KEY]: STALE_ENV_VALUE } }, null, 2));
     const run = (...args: string[]) => spawnSync("bun", [script, file, ...args], { encoding: "utf8" });
     const read = () => JSON.parse(readFileSync(file, "utf8"));
 
     expect(run("/c/g.ts").status).toBe(0);
     expect(read().hooks.PreToolUse).toHaveLength(2);
-    expect(read().env[SUBAGENT_MODEL_KEY]).toBe(SUBAGENT_MODEL);
+    // The stale box-wide default is gone; the other env key survives.
+    expect(read().env).toEqual({ TELEGRAM_PORT: "8795" });
     expect(run("/c/g.ts").status).toBe(0);
     expect(read().hooks.PreToolUse).toHaveLength(2);
     expect(run("--uninstall").status).toBe(0);
