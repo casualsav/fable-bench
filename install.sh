@@ -48,7 +48,7 @@ rm -rf "$CLAUDE/skills/fable" "$CLAUDE/skills/oracle" "$CLAUDE/skills/fable-meth
 cp -a "$SRC/skills/fable" "$CLAUDE/skills/fable"
 cp -a "$SRC/skills/fable-method" "$CLAUDE/skills/fable-method"
 
-for a in explorer fable-planner verifier coder engineer test-writer reviewer smoke-tester; do
+for a in explorer researcher fable-planner verifier coder engineer test-writer reviewer smoke-tester; do
   cp -a "$SRC/agents/$a.md" "$CLAUDE/agents/$a.md"
 done
 
@@ -84,7 +84,7 @@ else
   echo "  lead mode    : not installed (CLAUDE.md untouched; FABLE_LEAD=yes to add)"
 fi
 echo "  /fable       : Fable plans, you execute (on demand)"
-echo "  agents       : fable-planner + explorer, verifier, coder,"
+echo "  agents       : fable-planner + explorer, researcher, verifier, coder,"
 echo "                 engineer, test-writer, reviewer, smoke-tester"
 echo
 echo "Restart / reload your session."

@@ -151,6 +151,7 @@ shipped default is `high`; edit the agent's `effort:` frontmatter to change it.)
 | `skills/fable-method/SKILL.md` | Fable’s working method distilled for the below-Fable driver — decomposition, self-verification, next-action selection. Load at the start of any nontrivial task. |
 | `agents/fable-planner.md` | The Fable 5 planner — writes the plan from the evidence brief; warm diff-review when resumed; opt-in critique mode. |
 | `agents/explorer.md` | Sonnet discovery worker (grounds the brief; also spawned by the planner for its own search). |
+| `agents/researcher.md` | Sonnet web/docs research worker: searches and fetches, returns a sourced, dated summary; never writes to the repo. |
 | `agents/verifier.md` | Haiku test/lint/build runner (returns distilled pass/fail for self-verify). |
 | `agents/coder.md` | Sonnet worker: small, precisely-specced fixes. Gated by `reviewer`. |
 | `agents/engineer.md` | Opus 5 worker (pinned `claude-opus-5`): behavior-preserving structural refactors, tests-first on uncovered code. |

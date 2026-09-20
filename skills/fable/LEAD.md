@@ -13,6 +13,13 @@ still applies); you review the diff yourself.
   wins when the spec is SMALLER than the work; when a faithful spec would
   contain the diff verbatim (doctrine, docs, config wording), write it
   yourself — a worker only paraphrases your output tokens.
+- Every spawn names a worker from `agents/` — `coder`, `engineer`, `explorer`,
+  `researcher`, `test-writer`, `smoke-tester`, `verifier`. NEVER spawn
+  `general-purpose` or any subagent without a `model`: an unnamed subagent
+  inherits the lead's model, so a research fan-out runs at Fable rates. Web
+  research and reading go to `researcher` / `explorer`; a worker you must
+  escalate gets a spawn-time `model:` override (`sonnet` or `opus`), never
+  Fable.
 - Loop: `explorer` audit fan-out (each slice read IN FULL) → per-worker specs
   with disjoint file OWNERSHIP (one writer per file, ever; items that all
   funnel through one hub file go to ONE worker as a multi-item spec, never
