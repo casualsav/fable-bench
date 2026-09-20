@@ -2,92 +2,86 @@
 // PreToolUse hook on the Agent tool (Claude Code 2.1.278 names it `Agent`;
 // `Task` is the legacy spelling and still circulates internally, so both match).
 //
-// Why: an Agent call with no `model` inherits the PARENT session's model. A
-// Fable-led session that spawns `general-purpose` therefore runs the whole
-// fan-out at Fable rates — observed 2026-09-20, five unnamed subagents that
-// spawned four more each. Prose in skills/fable/LEAD.md asks for the defined
-// workers; this hook is the deterministic half.
+// Why: an Agent call whose `subagent_type` pins no model INHERITS the parent
+// session's model. A Fable-led session that spawns `general-purpose` therefore
+// runs the whole fan-out at Fable rates — observed 2026-09-20, five unnamed
+// subagents, three of which spawned four more each. Prose in
+// skills/fable/LEAD.md asks for the defined workers; this hook is the
+// deterministic half.
 //
-// The decision uses the tool input plus the installed agent files only: no
-// model call, no network. The parent's driving model is NOT available to a
-// PreToolUse hook (measured 2026-09-20 against 2.1.278: the hook input carries
-// session_id, transcript_path, cwd, prompt_id, permission_mode, agent_id,
-// agent_type, effort, hook_event_name, tool_name, tool_input, tool_use_id —
-// no model; and the hook's environment carries CLAUDE_EFFORT but no model
-// var). So the rule cannot be scoped to Fable parents and applies box-wide.
+// The decision reads the tool input, the installed agent files, and the
+// session transcript. No model call, no network.
 //
 // Canonical copy: fable-bench/scripts/subagent-guard.ts. Installed copy (the
 // one settings.json runs): ~/.claude/scripts/subagent-guard.ts — keep
 // byte-identical.
-import { readFileSync } from "node:fs";
+import { readFileSync, openSync, readSync, fstatSync, closeSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-/** Agent types this guard lets through; everything else is denied. */
-export type Roster = Map<string, { model?: string }>;
+/**
+ * Every agent type the box defines, by name. `model` is the frontmatter pin;
+ * a type with no pin inherits the parent's model, which is the hazard.
+ */
+export type Roster = Map<string, { model?: string; fableBench?: boolean }>;
 
-export type HookInput = {
-  tool_name?: string;
-  tool_input?: unknown;
-};
+/** Whether the session doing the spawning is itself running on Fable. */
+export type Parent = "fable" | "safe" | "unknown";
+
+export type HookInput = { tool_name?: string; tool_input?: unknown; transcript_path?: string };
 
 export type Decision = { allow: true } | { allow: false; reason: string };
 
-/** The one roster entry allowed to be pinned to Fable: it IS the /fable plan. */
-const FABLE_PLANNER = "fable-planner";
-
-/** Name of the roster manifest install.sh writes next to the agent files. */
+/** Name of the fable-bench roster manifest install.sh writes beside the agent files. */
 export const MANIFEST = "fable-bench-agents";
+
+/** How much of the transcript tail to read looking for the parent's model. */
+const TAIL_BYTES = 1 << 20;
 
 const isFableModel = (m: string) => /fable|mythos/i.test(m);
 
-function workerList(roster: Roster): string {
-  return [...roster.keys()].sort().join(", ");
-}
-
-export function decide(input: HookInput, roster: Roster): Decision {
+export function decide(input: HookInput, roster: Roster, parent: Parent): Decision {
   if (input.tool_name !== "Agent" && input.tool_name !== "Task") return { allow: true };
-  // No roster means fable-bench is not installed here; the guard has nothing
-  // to allow against, so it stays out of the way rather than denying every spawn.
-  if (roster.size === 0) return { allow: true };
 
   const ti = (typeof input.tool_input === "object" && input.tool_input !== null
     ? input.tool_input
     : {}) as Record<string, unknown>;
   const model = typeof ti.model === "string" ? ti.model.trim() : "";
   const type = typeof ti.subagent_type === "string" ? ti.subagent_type.trim() : "";
-  const use = `Spawn a defined worker instead: ${workerList(roster)}. Escalate one with a spawn-time \`model: sonnet\` / \`model: opus\` if it needs more.`;
+  const workers = [...roster].filter(([, e]) => e.fableBench && e.model && !isFableModel(e.model)).map(([n]) => n).sort();
+  const use = workers.length
+    ? ` Spawn a defined worker instead — ${workers.join(", ")} — or escalate one with a spawn-time \`model: sonnet\` / \`model: opus\`.`
+    : "";
 
+  // No subagent may run on Fable, whatever the parent is.
   if (model && isFableModel(model))
-    return { allow: false, reason: `fable-bench: subagent model "${model}" is Fable-tier — no subagent may run on Fable. ${use}` };
+    return { allow: false, reason: `fable-bench: subagent model "${model}" is Fable-tier — no subagent runs on Fable.${use}` };
 
-  if (!type)
+  // An explicit non-Fable model is the sanctioned escape hatch: the call pins
+  // its own model, so nothing about it can inherit.
+  if (model) return { allow: true };
+
+  const entry = type ? roster.get(type) : undefined;
+  if (entry?.model) {
+    if (!isFableModel(entry.model)) return { allow: true }; // A pinned non-Fable definition cannot inherit.
+    // fable-planner is pinned to Fable on purpose: it IS the /fable plan. A
+    // below-Fable driver may spawn it; a Fable lead is its own planner.
+    if (entry.fableBench && parent !== "fable") return { allow: true };
     return {
       allow: false,
-      reason:
-        `fable-bench: this Agent call names no \`subagent_type\`, so the subagent would inherit the session's model — on a Fable-led session that runs it at Fable rates. ${use}`,
+      reason: `fable-bench: \`${type}\` is pinned to "${entry.model}", which is Fable-tier, and this session is Fable-led — you are already the planner.${use}`,
     };
-
-  const entry = roster.get(type);
-  if (!entry)
-    return {
-      allow: false,
-      reason: `fable-bench: \`${type}\` is not one of this box's defined workers. ${use}`,
-    };
-
-  if (type !== FABLE_PLANNER) {
-    if (!entry.model)
-      return {
-        allow: false,
-        reason: `fable-bench: \`${type}\` pins no \`model:\` in its frontmatter, so it would inherit the session's model. ${use}`,
-      };
-    if (isFableModel(entry.model))
-      return {
-        allow: false,
-        reason: `fable-bench: \`${type}\` is pinned to "${entry.model}", which is Fable-tier — no subagent may run on Fable. ${use}`,
-      };
   }
 
-  return { allow: true };
+  // Past here the call would inherit the parent's model. That is only safe when
+  // the parent is provably not Fable.
+  if (parent === "safe") return { allow: true };
+
+  const why =
+    parent === "fable"
+      ? "this session is Fable-led, so it would run at Fable rates"
+      : "this session's model could not be read from its transcript, so the guard assumes Fable";
+  const what = type ? `\`${type}\` pins no model` : "this Agent call names no `subagent_type`";
+  return { allow: false, reason: `fable-bench: ${what}, so the subagent would inherit the session's model — ${why}.${use}` };
 }
 
 /** `model:` from a `---`-fenced markdown frontmatter block, if it has one. */
@@ -100,31 +94,82 @@ export function frontmatterModel(text: string): string | undefined {
 }
 
 /**
- * Roster = the agent names install.sh recorded in the manifest, each paired
- * with the `model:` its installed agent file pins. A name whose file is
- * missing or unreadable stays in the roster with no model, so `decide` denies
- * it rather than guessing.
+ * The roster is evidence, not a hand-kept list: every agent file installed
+ * under <claudeDir>/agents, with the model its frontmatter pins. The manifest
+ * install.sh writes marks which of them are fable-bench's, which is what the
+ * denial message offers and what earns `fable-planner` its exemption.
  */
 export function loadRoster(claudeDir: string): Roster {
   const roster: Roster = new Map();
-  let manifest: string;
+  let files: string[] = [];
   try {
-    manifest = readFileSync(join(claudeDir, MANIFEST), "utf8");
+    files = readdirSync(join(claudeDir, "agents")).filter((f) => f.endsWith(".md"));
   } catch {
-    return roster;
+    /* no agents dir: every type inherits, and the parent check decides */
   }
-  for (const line of manifest.split("\n")) {
-    const name = line.trim();
-    if (!name || name.startsWith("#")) continue;
-    let model: string | undefined;
+  for (const f of files) {
+    const name = f.slice(0, -3);
     try {
-      model = frontmatterModel(readFileSync(join(claudeDir, "agents", `${name}.md`), "utf8"));
+      roster.set(name, { model: frontmatterModel(readFileSync(join(claudeDir, "agents", f), "utf8")) });
     } catch {
-      model = undefined;
+      roster.set(name, {});
     }
-    roster.set(name, { model });
+  }
+  try {
+    for (const line of readFileSync(join(claudeDir, MANIFEST), "utf8").split("\n")) {
+      const name = line.trim();
+      if (!name || name.startsWith("#")) continue;
+      roster.set(name, { ...(roster.get(name) ?? {}), fableBench: true });
+    }
+  } catch {
+    /* fable-bench not installed here: the guard still denies inheriting spawns */
   }
   return roster;
+}
+
+/**
+ * The driving model of the session making the call. A PreToolUse hook is not
+ * told it (measured 2026-09-20 against Claude Code 2.1.278: the hook input
+ * carries session_id, transcript_path, cwd, prompt_id, permission_mode,
+ * agent_id, agent_type, effort, tool_name, tool_input and tool_use_id but no
+ * model, and the hook's environment exposes CLAUDE_EFFORT and no model
+ * variable), so the transcript is the only evidence. Two measured limits:
+ * the assistant message carrying THIS tool call has not been flushed yet, so
+ * the reading is the previous turn's; and on a session's very first tool call
+ * there is no assistant entry at all, which reads "unknown" and fails closed.
+ */
+export function parentModel(transcriptPath?: string): Parent {
+  if (!transcriptPath) return "unknown";
+  let tail: string;
+  try {
+    const fd = openSync(transcriptPath, "r");
+    try {
+      const size = fstatSync(fd).size;
+      const start = Math.max(0, size - TAIL_BYTES);
+      const buf = Buffer.alloc(Math.min(size, TAIL_BYTES));
+      readSync(fd, buf, 0, buf.length, start);
+      tail = buf.toString("utf8");
+      if (start > 0) tail = tail.slice(tail.indexOf("\n") + 1); // drop the partial first line
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return "unknown";
+  }
+  const lines = tail.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]!;
+    if (!line.includes('"assistant"')) continue;
+    let o: any;
+    try {
+      o = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const m = o?.type === "assistant" ? o?.message?.model : undefined;
+    if (typeof m === "string" && m) return isFableModel(m) ? "fable" : "safe";
+  }
+  return "unknown";
 }
 
 export function denyPayload(reason: string): string {
@@ -143,10 +188,10 @@ if (import.meta.main) {
   try {
     input = JSON.parse(raw);
   } catch {
-    process.exit(0); // Not a hook payload we understand — never block on our own bug.
+    process.exit(0); // Not a payload we understand — never block on our own bug.
   }
   const claudeDir = process.env.CLAUDE_CONFIG_DIR || join(process.env.HOME ?? "", ".claude");
-  const d = decide(input, loadRoster(claudeDir));
+  const d = decide(input, loadRoster(claudeDir), parentModel(input.transcript_path));
   if (!d.allow) console.log(denyPayload(d.reason));
   process.exit(0);
 }

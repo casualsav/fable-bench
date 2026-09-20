@@ -56,10 +56,11 @@ done
 # The verifier's delta runner (verifier.md invokes it by this installed path).
 cp -a "$SRC/scripts/verify-against.ts" "$CLAUDE/scripts/verify-against.ts"
 
-# The subagent guard: a PreToolUse hook on the Agent tool that allows only the
-# workers above. An Agent call with no model inherits the PARENT session's
-# model, so an unnamed subagent of a Fable-led session runs at Fable rates.
-# The roster it allows is this list, recorded where the hook can read it.
+# The subagent guard: a PreToolUse hook on the Agent tool. An Agent call that
+# pins no model inherits the PARENT session's model, so an unnamed subagent of
+# a Fable-led session runs at Fable rates. The hook allows any agent file that
+# pins a non-Fable model; the manifest below just marks which ones are ours, so
+# the denial can name them and so fable-planner keeps its /fable exemption.
 cp -a "$SRC/scripts/subagent-guard.ts" "$CLAUDE/scripts/subagent-guard.ts"
 cp -a "$SRC/scripts/install-subagent-guard.ts" "$CLAUDE/scripts/install-subagent-guard.ts"
 printf '%s\n' $AGENTS > "$CLAUDE/fable-bench-agents"
@@ -101,8 +102,9 @@ echo "  /fable       : Fable plans, you execute (on demand)"
 echo "  agents       : fable-planner + explorer, researcher, verifier, coder,"
 echo "                 engineer, test-writer, reviewer, smoke-tester"
 if [ "$GUARD" = installed ]; then
-  echo "  subagent guard: PreToolUse hook on Agent in settings.json — only the"
-  echo "                 agents above may be spawned (no general-purpose, no Fable)"
+  echo "  subagent guard: PreToolUse hook on Agent in settings.json — no subagent"
+  echo "                 may run on Fable; a Fable-led session must name a worker"
+  echo "                 that pins its own model (no general-purpose, no fork)"
 else
   echo "  subagent guard: NOT INSTALLED — bun is missing. Unnamed subagents will"
   echo "                 keep inheriting the session model, Fable included."

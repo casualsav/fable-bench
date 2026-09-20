@@ -117,30 +117,40 @@ session — so nothing is left behind.
 ## Subagent guard
 
 `install.sh` also registers a `PreToolUse` hook on the `Agent` tool in
-`~/.claude/settings.json`. An `Agent` call with no `model` inherits the
-**parent session's** model, so a Fable-led session that spawns
+`~/.claude/settings.json`. An `Agent` call whose `subagent_type` pins no model
+inherits the **parent session's** model, so a Fable-led session that spawns
 `general-purpose` runs the whole fan-out at Fable rates — which is how one
 session turned five unnamed subagents into ~1,000 web fetches on 2026-09-20.
 
-The hook allows a spawn only when `subagent_type` names one of the workers
-installed above and that worker's frontmatter pins a non-Fable `model:`.
-Everything else is denied with a one-line reason that names the workers to use:
-`general-purpose`, `fork`, the built-in types, an agent with no pinned model,
-any spawn whose `model` names Fable or Mythos, and a call that passes only a
-`model` with no `subagent_type`. `fable-planner` is the one allowed
-Fable-pinned worker — it *is* the `/fable` plan.
+The hook reads the parent's model off the session transcript and decides:
 
-The rule applies **box-wide**, not only to Fable-led sessions: a `PreToolUse`
-hook is not told the parent's model (measured 2026-09-20 against Claude Code
-2.1.278 — the hook input carries `agent_id`, `agent_type`, `effort` and the
-tool input, but no model, and the hook's environment exposes `CLAUDE_EFFORT`
-and no model variable). So a Sonnet- or Opus-led session also loses
-`general-purpose`; use `researcher` / `explorer` instead, or escalate a worker
-with a spawn-time `model:` override.
+- **Always denied, under any parent:** a spawn whose `model` names Fable or
+  Mythos. No subagent runs on Fable.
+- **Always allowed:** a `subagent_type` whose installed agent file pins a
+  non-Fable `model:` — it cannot inherit. So every worker below, and any other
+  agent you have installed under `~/.claude/agents` that pins its model. Also
+  any call that passes an explicit non-Fable `model` of its own.
+- **Denied only under a Fable-led parent:** anything that would inherit —
+  `general-purpose`, `fork`, `Explore`, `Plan`, an agent file with no `model:`,
+  or a call with no `subagent_type` at all. The denial names the workers to use.
+  `fable-planner` is denied here too: a Fable lead is already the planner.
+- **Under a Sonnet- or Opus-led parent** those inheriting spawns are allowed —
+  they inherit Sonnet or Opus, which nobody forbade — and `/fable` can spawn
+  `fable-planner` as usual.
 
-The decision reads the tool input and the installed agent files only — no model
-call, no network. Removing `~/.claude/fable-bench-agents` (or running
-`uninstall.sh`) makes the hook inert.
+The parent's model is not handed to the hook (measured 2026-09-20 against
+Claude Code 2.1.278: the hook input carries `agent_id`, `agent_type`, `effort`
+and the tool input but no model, and the hook's environment exposes
+`CLAUDE_EFFORT` and no model variable), so the hook reads the last assistant
+entry in `transcript_path`. Two measured limits: that entry is the *previous*
+turn's, because the message carrying this tool call has not been flushed yet;
+and a session's very first tool call has no assistant entry at all. When the
+reading is missing the hook **fails closed** — it applies the Fable rule and
+says so in the denial — except for `fable-planner`, which only a *proven* Fable
+parent blocks, so that `/fable` typed as a session's first action still works.
+
+The decision reads the tool input, the installed agent files and that transcript
+only — no model call, no network.
 
 ## Requirements
 
