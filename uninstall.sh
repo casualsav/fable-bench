@@ -11,6 +11,8 @@ for a in explorer researcher fable-planner verifier coder engineer test-writer r
 done
 rm -f "$CLAUDE/fable-auto.on"
 rm -f "$CLAUDE/scripts/verify-against.ts"
+# The ID8 plug-in, and the lead prompt it left for ID8 in this dir.
+rm -f "$HOME/.id8/plugins/fable-bench" "$CLAUDE/id8-model-prompts/fable.md"
 
 # Subagent guard: drop its settings.json entry before removing its script.
 if command -v bun >/dev/null 2>&1 && [ -f "$CLAUDE/scripts/install-subagent-guard.ts" ]; then

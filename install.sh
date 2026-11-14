@@ -78,6 +78,11 @@ sed -i.bak -E "s|^effort:.*|effort: ${PLAN_EFFORT}|" "$CLAUDE/agents/fable-plann
 sed -i.bak -E "s|effort down to \`[a-z]+\`|effort down to \`${REVIEW_EFFORT}\`|g; s|the same \`[a-z]+\` override|the same \`${REVIEW_EFFORT}\` override|g; s|Effort override \`[a-z]+\`|Effort override \`${REVIEW_EFFORT}\`|g" "$CLAUDE/skills/fable/SKILL.md"
 rm -f "$CLAUDE/agents/fable-planner.md.bak" "$CLAUDE/skills/fable/SKILL.md.bak"
 
+# ID8's sync (id8-sync.sh, FABLE_ID8_SYNC=1) stops here: ID8 never loads a
+# worker's CLAUDE.md, and the dir may be the user's own, whose lead-mode
+# choice this run must not undo.
+if [ -n "${FABLE_ID8_SYNC:-}" ]; then exit 0; fi
+
 # CLAUDE.md handling: always strip stale sentinel blocks (from earlier
 # fable-bench or legacy fable-auto installs); append the minimal lead-mode
 # block only when lead mode was requested.
@@ -93,6 +98,19 @@ fi
 
 # Lite variant has no auto layer: clear any stale marker so nothing implies it.
 rm -f "$CLAUDE/fable-auto.on"
+
+# Beside ID8, register as its plug-in: at every boot ID8 runs it once per config
+# dir it launches workers from (a worker account included), and appends the
+# lead prompt it leaves there to every worker launched on Fable.
+ID8_ROOT="$HOME/.id8"
+ID8_PLUGIN=skipped
+if [ -d "$ID8_ROOT" ]; then
+  mkdir -p "$ID8_ROOT/plugins"
+  printf '#!/usr/bin/env bash\n# Written by fable-bench install.sh; ID8 runs it per worker config dir.\nexec env FABLE_EFFORT=%s FABLE_REVIEW_EFFORT=%s %q\n' \
+    "$PLAN_EFFORT" "$REVIEW_EFFORT" "$SRC/id8-sync.sh" > "$ID8_ROOT/plugins/fable-bench"
+  chmod +x "$ID8_ROOT/plugins/fable-bench"
+  ID8_PLUGIN=registered
+fi
 
 echo "Installed fable-bench-lite into $CLAUDE"
 echo "  plan effort  : $PLAN_EFFORT    review effort: $REVIEW_EFFORT"
@@ -112,6 +130,11 @@ if [ "$GUARD" = installed ]; then
 else
   echo "  subagent guard: NOT INSTALLED — bun is missing. Unnamed subagents will"
   echo "                 keep inheriting the session model, Fable included."
+fi
+if [ "$ID8_PLUGIN" = registered ]; then
+  echo "  ID8 plug-in  : registered in $ID8_ROOT/plugins — from ID8's next boot"
+  echo "                 (a restart or /update), every ID8 account gets this kit"
+  echo "                 and a worker launched on Fable leads per LEAD.md"
 fi
 echo
 echo "Restart / reload your session."
