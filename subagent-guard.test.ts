@@ -35,7 +35,9 @@ const ROSTER: Roster = new Map([
 ]);
 
 const PARENTS: Parent[] = ["fable", "safe", "unknown"];
-const INHERITING = ["general-purpose", "fork", "Explore", "Plan", "claude", "claude-code-guide", "unpinned"];
+// `fork` is not here: it always runs on the session's own model, so it has
+// its own rule (see "the fork" below).
+const INHERITING = ["general-purpose", "Explore", "Plan", "claude", "claude-code-guide", "unpinned"];
 
 const call = (tool_input: Record<string, unknown>, parent: Parent, tool_name = "Agent") =>
   decide({ tool_name, tool_input }, ROSTER, parent);
@@ -77,7 +79,7 @@ test("a Fable parent's defined workers are passed through untouched", () => {
 // ---- under a below-Fable parent: nothing happens at all ----------------------
 
 test("a proven non-Fable parent is never rewritten and never nudged", () => {
-  for (const t of [...INHERITING, "coder", "assistant", "fable-planner"])
+  for (const t of [...INHERITING, "fork", "coder", "assistant", "fable-planner"])
     expect(call({ subagent_type: t, prompt: "go" }, "safe")).toEqual({ allow: true });
   expect(call({ prompt: "go" }, "safe")).toEqual({ allow: true });
 });
@@ -116,6 +118,34 @@ test("an explicit non-Fable model is always allowed untouched — it pins, so it
   expect(call({ model: "sonnet", prompt: "go" }, "fable")).toEqual({ allow: true });
 });
 
+// ---- the fork -----------------------------------------------------------------
+// The Agent tool documents (2.1.325) that a fork always runs on the session's
+// own model and ignores a model override, so neither the rewrite nor an
+// explicit model can keep it off Fable.
+
+test("a Fable parent may not fork, whatever model the call carries", () => {
+  for (const model of [undefined, "opus", "sonnet", "haiku"]) {
+    const d = call({ subagent_type: "fork", prompt: "go", ...(model && { model }) }, "fable");
+    expect(d.allow).toBe(false);
+    expect(!d.allow && d.reason).toContain("ignores a model override");
+    expect(!d.allow && d.reason).toContain("researcher");
+  }
+});
+
+test("a fork asking for a Fable model keeps the Fable-model denial", () => {
+  for (const parent of PARENTS) {
+    const d = call({ subagent_type: "fork", model: "fable" }, parent);
+    expect(d.allow).toBe(false);
+    expect(!d.allow && d.reason).toContain(`model: ${FALLBACK_MODEL}`);
+  }
+});
+
+test("a fork under a below-Fable or unreadable parent is allowed untouched — it cannot be pinned", () => {
+  for (const parent of ["safe", "unknown"] as Parent[])
+    for (const model of [undefined, "opus"])
+      expect(call({ subagent_type: "fork", prompt: "go", ...(model && { model }) }, parent)).toEqual({ allow: true });
+});
+
 // ---- plumbing -----------------------------------------------------------------
 
 test("the legacy `Task` tool name is guarded too, and other tools are not", () => {
@@ -138,6 +168,7 @@ test("frontmatterModel reads only a leading --- block", () => {
   expect(frontmatterModel("---\nname: x\nmodel: claude-sonnet-5\n---\nbody\n")).toBe("claude-sonnet-5");
   expect(frontmatterModel("---\nname: x\n---\nmodel: claude-sonnet-5\n")).toBeUndefined();
   expect(frontmatterModel("no frontmatter\n")).toBeUndefined();
+  expect(frontmatterModel('---\nmodel: "haiku"\n---\n')).toBe("haiku");
 });
 
 test("loadRoster reads every installed agent file and marks fable-bench's own", () => {
@@ -161,6 +192,73 @@ test("loadRoster reads every installed agent file and marks fable-bench's own", 
     expect(d.allow && d.updatedInput?.model).toBe(FALLBACK_MODEL);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("loadRoster keys an agent by its frontmatter name, falling back to the filename", () => {
+  const dir = mkdtempSync(join(tmpdir(), "subguard-names-"));
+  try {
+    mkdirSync(join(dir, "agents"));
+    writeFileSync(join(dir, "agents", "file-name.md"), "---\nname: real-name\nmodel: haiku\n---\nbody\n");
+    writeFileSync(join(dir, "agents", "nameless.md"), "---\nmodel: sonnet\n---\nbody\n");
+    writeFileSync(join(dir, MANIFEST), "real-name\n");
+    const roster = loadRoster(dir);
+    expect([...roster.keys()].sort()).toEqual(["nameless", "real-name"]);
+    expect(roster.get("real-name")).toEqual({ model: "haiku", fableBench: true });
+    expect(roster.get("nameless")).toEqual({ model: "sonnet" });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("loadRoster reads the project's agents, which replace user agents of the same name", () => {
+  const home = mkdtempSync(join(tmpdir(), "subguard-project-"));
+  const claudeDir = join(home, ".claude");
+  const project = join(home, "proj");
+  try {
+    mkdirSync(join(claudeDir, "agents"), { recursive: true });
+    mkdirSync(join(project, ".claude", "agents"), { recursive: true });
+    const write = (dir: string, n: string, model?: string) =>
+      writeFileSync(join(dir, "agents", `${n}.md`), `---\nname: ${n}\n${model ? `model: ${model}\n` : ""}---\nbody\n`);
+    const projDir = join(project, ".claude");
+    write(claudeDir, "explorer", "sonnet");
+    write(claudeDir, "shadowed");
+    write(claudeDir, "unpinned-by-project", "sonnet");
+    write(claudeDir, "user-only", "opus");
+    write(projDir, "shadowed", "haiku");
+    write(projDir, "unpinned-by-project");
+    write(projDir, "project-only", "haiku");
+    write(projDir, "project-fable", "fable");
+    writeFileSync(join(claudeDir, MANIFEST), "explorer\nshadowed\n");
+
+    const roster = loadRoster(claudeDir, project);
+    expect([...roster.keys()].sort()).toEqual(
+      ["explorer", "project-fable", "project-only", "shadowed", "unpinned-by-project", "user-only"],
+    );
+    expect(roster.get("shadowed")).toEqual({ model: "haiku", fableBench: true });
+    expect(roster.get("unpinned-by-project")?.model).toBeUndefined();
+    expect(roster.get("user-only")).toEqual({ model: "opus" });
+
+    // A project agent pinned below Fable is not silently upgraded to the fallback.
+    const run = (t: string) => decide({ tool_name: "Agent", tool_input: { subagent_type: t } }, roster, "fable");
+    expect(run("project-only")).toEqual({ allow: true });
+    expect(run("shadowed")).toEqual({ allow: true });
+    const unpinned = run("unpinned-by-project");
+    expect(unpinned.allow && unpinned.updatedInput?.model).toBe(FALLBACK_MODEL);
+    // A project agent pinned to Fable under a Fable parent is denied like any other.
+    const fable = run("project-fable");
+    expect(fable.allow).toBe(false);
+    expect(!fable.allow && fable.reason).toContain("Fable-tier");
+
+    // No project agents dir, or no cwd at all: the user roster alone.
+    expect([...loadRoster(claudeDir, join(home, "nowhere")).keys()].sort()).toEqual(
+      ["explorer", "shadowed", "unpinned-by-project", "user-only"],
+    );
+    expect(loadRoster(claudeDir).get("shadowed")?.model).toBeUndefined();
+    // cwd whose .claude IS the config dir: the same dir read twice changes nothing.
+    expect(loadRoster(claudeDir, home)).toEqual(loadRoster(claudeDir));
+  } finally {
+    rmSync(home, { recursive: true, force: true });
   }
 });
 
@@ -213,9 +311,9 @@ test("the hook binary rewrites under a Fable transcript and says nothing under a
     };
     const fable = transcript("fable.jsonl", "claude-fable-5-1");
     const sonnet = transcript("sonnet.jsonl", "claude-sonnet-5");
-    const run = (tool_input: Record<string, unknown>, transcript_path: string) =>
+    const run = (tool_input: Record<string, unknown>, transcript_path: string, cwd?: string) =>
       spawnSync("bun", [join(import.meta.dir, "scripts", "subagent-guard.ts")], {
-        input: JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Agent", tool_input, transcript_path }),
+        input: JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Agent", tool_input, transcript_path, cwd }),
         env: { ...process.env, CLAUDE_CONFIG_DIR: dir },
         encoding: "utf8",
       });
@@ -233,6 +331,19 @@ test("the hook binary rewrites under a Fable transcript and says nothing under a
 
     const denied = run({ subagent_type: "fable-planner", prompt: "plan" }, fable);
     expect(JSON.parse(denied.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
+
+    // A fork runs on the session's model whatever it asks for.
+    const fork = run({ subagent_type: "fork", model: "opus", prompt: "go" }, fable);
+    expect(JSON.parse(fork.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(run({ subagent_type: "fork", model: "opus", prompt: "go" }, sonnet).stdout.trim()).toBe("");
+
+    // A project agent's pin is read from the session's cwd and left alone.
+    const project = join(dir, "proj");
+    mkdirSync(join(project, ".claude", "agents"), { recursive: true });
+    writeFileSync(join(project, ".claude", "agents", "lint.md"), "---\nname: lint\nmodel: haiku\n---\nbody\n");
+    expect(run({ subagent_type: "lint", prompt: "go" }, fable, project).stdout.trim()).toBe("");
+    expect(JSON.parse(run({ subagent_type: "lint", prompt: "go" }, fable).stdout).hookSpecificOutput.updatedInput.model)
+      .toBe(FALLBACK_MODEL);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

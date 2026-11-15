@@ -4,8 +4,9 @@
 # (stale fable-bench blocks from earlier installs are stripped).
 #
 # Optional lead mode (for sessions where Fable itself is the driving model)
-# merges a ~6-line block into CLAUDE.md behind sentinels, pointing at
-# skills/fable/LEAD.md. Below-Fable sessions ignore it entirely.
+# merges a ~6-line block into CLAUDE.md behind sentinels, pointing at the
+# installed skills/fable/LEAD.md by its full path. Below-Fable sessions
+# ignore it entirely.
 #
 # Interactive install asks three questions:
 #   1. Fable PLAN effort?                      (recommended: high)
@@ -93,7 +94,7 @@ touch "$CMD"
 awk '$0=="<!-- fable-auto:begin -->"{skip=1} !skip{print} $0=="<!-- fable-auto:end -->"{skip=0}' "$CMD" > "$CMD.tmp" && mv "$CMD.tmp" "$CMD"
 awk -v b="$BEGIN_S" -v e="$END_S" '$0==b{skip=1} !skip{print} $0==e{skip=0}' "$CMD" > "$CMD.tmp" && mv "$CMD.tmp" "$CMD"
 if [ "$LEAD" = yes ]; then
-  { printf '%s\n' "$BEGIN_S"; cat "$SRC/CLAUDE-fable-bench.md"; printf '%s\n' "$END_S"; } >> "$CMD"
+  { printf '%s\n' "$BEGIN_S"; sed "s|@CONFIG_DIR@|$CLAUDE|g" "$SRC/CLAUDE-fable-bench.md"; printf '%s\n' "$END_S"; } >> "$CMD"
 fi
 
 # Lite variant has no auto layer: clear any stale marker so nothing implies it.

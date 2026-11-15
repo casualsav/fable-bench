@@ -17,8 +17,14 @@
 // did. Preferring the defined workers is skills/fable/LEAD.md's rule; the hook
 // only says so.
 //
-// The decision reads the tool input, the installed agent files and the session
-// transcript. No model call, no network.
+// The one spawn the rewrite cannot reach is `subagent_type: "fork"`: the Agent
+// tool documents (2.1.325) that a fork "always runs on your model — a model
+// override is ignored". Under a Fable parent a fork is therefore denied, with
+// or without a `model`; elsewhere it passes untouched.
+//
+// The decision reads the tool input, the agent files (user-level under the
+// config dir, then project-level under the session's cwd, which win by name)
+// and the session transcript. No model call, no network.
 //
 // Canonical copy: fable-bench/scripts/subagent-guard.ts. Installed copy (the
 // one settings.json runs): ~/.claude/scripts/subagent-guard.ts — keep
@@ -27,15 +33,15 @@ import { readFileSync, openSync, readSync, fstatSync, closeSync, readdirSync } f
 import { join } from "node:path";
 
 /**
- * Every agent type the box defines, by name. `model` is the frontmatter pin;
- * a type with no pin inherits the parent's model, which is the hazard.
+ * Every agent type the session can spawn, by name. `model` is the frontmatter
+ * pin; a type with no pin inherits the parent's model, which is the hazard.
  */
 export type Roster = Map<string, { model?: string; fableBench?: boolean }>;
 
 /** Whether the session doing the spawning is itself running on Fable. */
 export type Parent = "fable" | "safe" | "unknown";
 
-export type HookInput = { tool_name?: string; tool_input?: unknown; transcript_path?: string };
+export type HookInput = { tool_name?: string; tool_input?: unknown; transcript_path?: string; cwd?: string };
 
 /**
  * `updatedInput` replaces the tool input; `notice` is advice the session reads
@@ -56,6 +62,14 @@ const TAIL_BYTES = 1 << 20;
 
 const isFableModel = (m: string) => /fable|mythos/i.test(m);
 
+/**
+ * Allow, rewrite or deny one Agent call. A Fable-model request is denied under
+ * every parent. A `fork` always runs on the session's own model, so under a
+ * Fable parent it is denied whatever `model` it carries, and otherwise passes
+ * untouched — it cannot be pinned, so there is no fail-closed rewrite for it.
+ * Any other call that pins no model, by tool input or by its roster entry, is
+ * rewritten to the fallback under a Fable or unreadable parent.
+ */
 export function decide(input: HookInput, roster: Roster, parent: Parent): Decision {
   if (input.tool_name !== "Agent" && input.tool_name !== "Task") return { allow: true };
 
@@ -78,6 +92,16 @@ export function decide(input: HookInput, roster: Roster, parent: Parent): Decisi
       allow: false,
       reason: `fable-bench: subagent model "${model}" is Fable-tier — no subagent runs on Fable. Pass \`model: ${FALLBACK_MODEL}\` instead.`,
     };
+
+  // Neither the rewrite nor an explicit model reaches a fork, so it must be
+  // settled before the explicit-model allow below.
+  if (type === "fork") {
+    if (parent !== "fable") return { allow: true };
+    return {
+      allow: false,
+      reason: `fable-bench: a fork always runs on this session's own model and ignores a model override, and this session is Fable-led — the fork would run on Fable.${use}`,
+    };
+  }
 
   // An explicit non-Fable model pins the call, so nothing about it can inherit.
   if (model) return { allow: true };
@@ -113,37 +137,54 @@ export function decide(input: HookInput, roster: Roster, parent: Parent): Decisi
   };
 }
 
-/** `model:` from a `---`-fenced markdown frontmatter block, if it has one. */
-export function frontmatterModel(text: string): string | undefined {
+/** `<key>:` from a `---`-fenced markdown frontmatter block, if it has one. */
+export function frontmatterField(text: string, key: string): string | undefined {
   if (!text.startsWith("---")) return undefined;
   const end = text.indexOf("\n---", 3);
   if (end === -1) return undefined;
-  const m = text.slice(0, end).match(/^model:[ \t]*(.+?)[ \t]*$/m);
-  return m ? m[1] : undefined;
+  const m = text.slice(0, end).match(new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, "m"));
+  return m ? m[1]!.replace(/^(["'])(.*)\1$/, "$2") : undefined;
 }
 
+/** `model:` from a `---`-fenced markdown frontmatter block, if it has one. */
+export const frontmatterModel = (text: string) => frontmatterField(text, "model");
+
 /**
- * The roster is evidence, not a hand-kept list: every agent file installed
- * under <claudeDir>/agents, with the model its frontmatter pins. The manifest
- * install.sh writes marks which of them are fable-bench's, which is what the
- * denial message offers and what earns `fable-planner` its exemption.
+ * Agent files in <dir>/agents into the roster, keyed by frontmatter `name:`
+ * (what Claude Code spawns by) or the filename stem without one. Each entry
+ * replaces any earlier one of the same name outright, pin included.
  */
-export function loadRoster(claudeDir: string): Roster {
-  const roster: Roster = new Map();
+function readAgents(roster: Roster, dir: string): void {
   let files: string[] = [];
   try {
-    files = readdirSync(join(claudeDir, "agents")).filter((f) => f.endsWith(".md"));
+    files = readdirSync(join(dir, "agents")).filter((f) => f.endsWith(".md"));
   } catch {
     /* no agents dir: every type inherits, and the parent check decides */
   }
   for (const f of files) {
-    const name = f.slice(0, -3);
+    let text: string;
     try {
-      roster.set(name, { model: frontmatterModel(readFileSync(join(claudeDir, "agents", f), "utf8")) });
+      text = readFileSync(join(dir, "agents", f), "utf8");
     } catch {
-      roster.set(name, {});
+      roster.set(f.slice(0, -3), {});
+      continue;
     }
+    roster.set(frontmatterField(text, "name") ?? f.slice(0, -3), { model: frontmatterModel(text) });
   }
+}
+
+/**
+ * The roster is evidence, not a hand-kept list: every agent file under
+ * <claudeDir>/agents, then every one under <cwd>/.claude/agents — a project
+ * agent beats a user agent of the same name in Claude Code, so here it
+ * replaces it, a project file with no `model:` un-pinning the name. The
+ * manifest install.sh writes marks which names are fable-bench's, which is
+ * what the denial message offers and what earns `fable-planner` its exemption.
+ */
+export function loadRoster(claudeDir: string, cwd?: string): Roster {
+  const roster: Roster = new Map();
+  readAgents(roster, claudeDir);
+  if (cwd) readAgents(roster, join(cwd, ".claude"));
   try {
     for (const line of readFileSync(join(claudeDir, MANIFEST), "utf8").split("\n")) {
       const name = line.trim();
@@ -236,7 +277,8 @@ if (import.meta.main) {
     process.exit(0); // Not a payload we understand — never block on our own bug.
   }
   const claudeDir = process.env.CLAUDE_CONFIG_DIR || join(process.env.HOME ?? "", ".claude");
-  const d = decide(input, loadRoster(claudeDir), parentModel(input.transcript_path));
+  const cwd = typeof input.cwd === "string" && input.cwd ? input.cwd : undefined;
+  const d = decide(input, loadRoster(claudeDir, cwd), parentModel(input.transcript_path));
   if (!d.allow) console.log(denyPayload(d.reason));
   else if (d.updatedInput || d.notice) console.log(allowPayload(d));
   process.exit(0);

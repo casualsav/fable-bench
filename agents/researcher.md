@@ -1,7 +1,7 @@
 ---
 name: researcher
 description: Web and docs research for the lead: searches, fetches, and returns a sourced, dated summary — never writes code or files in the repo
-model: claude-sonnet-5
+model: sonnet
 effort: medium
 tools: Read, Grep, Glob, Bash, WebSearch, WebFetch
 ---

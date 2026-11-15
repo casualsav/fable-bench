@@ -1,7 +1,7 @@
 # fable-bench
 
 **Fable is the planner.** `/fable` on any nontrivial task: you (a below-Fable
-driver — Sonnet or Opus) gather the evidence, Claude Fable 5 writes the plan
+driver — Sonnet or Opus) gather the evidence, Claude Fable writes the plan
 — unanchored by any draft of yours — you execute it, and the *same* Fable
 agent is resumed at the end for a warm diff-review. Nothing fires unless you
 type it (this is the LITE variant — no auto layer).
@@ -13,7 +13,7 @@ and ships; the worker agents write the code. It's a ~6-line CLAUDE.md block
 below-Fable sessions.
 
 The philosophy: **the driver holds full session context and does the work;
-Fable holds the judgment.** Fable 5 has stronger judgment but zero session
+Fable holds the judgment.** Fable has stronger judgment but zero session
 context, so the driver's job is to compress that context into a terse
 evidence brief — constraints, acceptance criteria, file map, load-bearing
 code — and Fable's job is the plan. Two touches per `/fable` — the plan
@@ -52,8 +52,6 @@ Three additions from the execution-layer marriage:
 
 ## Install
 
-**Recommended — bare `/fable` (user-level skill):**
-
 ```
 git clone https://github.com/casualsav/fable-bench
 ./fable-bench/install.sh
@@ -75,42 +73,23 @@ three questions (env vars skip them for non-interactive installs):
 
 Worker efforts are pinned in frontmatter (they cost speed, not Fable):
 verification + explore `low` · coder + smoke-tester `medium` · test-writer `high` ·
-engineer + reviewer `high`.
+engineer + reviewer `high`. Worker models are tier aliases (`sonnet`, `opus`,
+`haiku`, `fable`), so each worker runs the newest model of its tier that your
+Claude Code resolves — nothing to re-pin when a model ships.
 
 User skills aren't namespaced, so the command is exactly `/fable`. Restart / reload your session after
 installing.
 
-**Alternative — as a plugin (namespaced `/fable-bench:fable`):**
-
-```
-/plugin marketplace add casualsav/fable-bench
-/plugin install fable-bench
-```
-
-You get `/plugin`-managed updates, but Claude Code namespaces every plugin
-command, so it invokes as `/fable-bench:fable` — not bare `/fable` — and the
-workers are namespaced too (see the plugin note below). Pick this only if you
-want the managed-update path over the clean name.
-
 ## Uninstall
-
-If you used the script:
 
 ```
 ./fable-bench/uninstall.sh
 ```
 
-If you installed the plugin:
-
-```
-/plugin uninstall fable-bench
-/plugin marketplace remove casualsav/fable-bench
-```
-
 `uninstall.sh` also removes the subagent guard's entry from
 `~/.claude/settings.json`, leaving every other hook and setting in place.
 
-Either way, `/fable` writes nothing persistent beyond those files — its only
+`/fable` writes nothing persistent beyond those files — its only
 runtime state is an in-session task checkpoint that lives and dies with the
 session — so nothing is left behind.
 
@@ -127,15 +106,18 @@ The hook decides from the tool input, the installed agent files and the session
 transcript — no model call, no network:
 
 - **Under a Fable-led parent**, a spawn that would inherit — `general-purpose`,
-  `fork`, `Explore`, `Plan`, an agent file with no `model:`, a call with no
+  `Explore`, `Plan`, an agent file with no `model:`, a call with no
   `subagent_type` — is **rewritten** to `model: opus` (one step down from Fable
   rather than two) via `hookSpecificOutput.updatedInput`, and carries a
   one-line notice that a defined worker is preferred. The call is not blocked.
 - **Under a Sonnet- or Opus-led parent**, nothing happens at all: no rewrite,
   no notice. Their subagents inherit exactly as they did before.
-- **Always allowed untouched:** a `subagent_type` whose agent file pins a
-  non-Fable `model:` — it cannot inherit — and any call passing an explicit
-  non-Fable `model`.
+- **`fork` is denied under a Fable-led parent**, whatever `model` it carries:
+  a fork always runs on the session's own model and ignores a model override,
+  so it cannot be pinned.
+- **Always allowed untouched:** a `subagent_type` whose agent file — user-level
+  or the project's own `.claude/agents` — pins a non-Fable `model:`, since it
+  cannot inherit, and any other call passing an explicit non-Fable `model`.
 - **Always denied:** a spawn whose `model` names Fable or Mythos. No subagent
   runs on Fable.
 - **`fable-planner` is denied under a Fable-led parent**: its frontmatter pins
@@ -158,9 +140,13 @@ hook's `updatedInput` really does change the model the subagent runs on (a
 hook pinned it), and `additionalContext` on an allowed call reaches the model as
 a system-reminder without blocking it.
 
+Re-proved on 2.1.325 from a fresh install under a Fable 5.2 lead: an unnamed
+`general-purpose` spawn came back as `claude-opus-5-5` with the notice
+attached, and a `fork` was refused with the guard's reason.
+
 ## Requirements
 
-- **Claude Fable 5** access (the planner agent is pinned to `model: claude-fable-5`; `install.sh` prompts
+- **Claude Fable** access (the planner agent runs on the `fable` alias, always the newest Fable; `install.sh` prompts
   for effort, recommended `high` — see below).
 - **`bun`** — for the subagent guard and the `verifier`'s delta runner. Without it `install.sh`
   installs everything else and says plainly that the guard is not active.
@@ -175,7 +161,7 @@ Fable's reasoning depth is set by the `effort:` frontmatter in the installed
 **recommended: high** — Anthropic's own default for nontrivial work, and `/fable` only fires
 on nontrivial work; Fable at medium buys little margin over the Opus driver (Fable-low is
 comparable to Opus-xhigh). Raise to `xhigh` for a rare, capability-critical plan. One honest caveat: thinking
-tokens bill at Fable's output rate ($50/MTok), so effort — not the visible reply caps — is
+tokens bill at Fable's output rate, so effort — not the visible reply caps — is
 the biggest cost dial in the system; `medium` is the legitimate lever if usage limits bite:
 
 ```
@@ -188,8 +174,7 @@ verified: changing effort mid-conversation does NOT invalidate the message cache
 frontmatter effort applies to the plan engagement; the warm review and any exception mid-consult
 are resumed with a per-invocation override to `medium`, since they're bounded judgment
 against an already-vetted plan. This makes `xhigh` plans affordable: the deep
-thinking is spent once, not twice. If you install via `/plugin` instead of `install.sh`, the
-shipped default is `high`; edit the agent's `effort:` frontmatter to change it.)
+thinking is spent once, not twice.)
 
 ## What's inside
 
@@ -198,32 +183,19 @@ shipped default is `high`; edit the agent's `effort:` frontmatter to change it.)
 | `skills/fable/SKILL.md` | The `/fable` flow + all the engagement discipline (brief format, coded-output decoding, bindingness). |
 | `skills/fable/LEAD.md` | The Fable-lead playbook, loaded by the optional lead-mode CLAUDE.md block (Fable-driven sessions only). |
 | `skills/fable-method/SKILL.md` | Fable’s working method distilled for the below-Fable driver — decomposition, self-verification, next-action selection. Load at the start of any nontrivial task. |
-| `agents/fable-planner.md` | The Fable 5 planner — writes the plan from the evidence brief; warm diff-review when resumed; opt-in critique mode. |
+| `agents/fable-planner.md` | The Fable planner — writes the plan from the evidence brief; warm diff-review when resumed; opt-in critique mode. |
 | `agents/explorer.md` | Sonnet discovery worker (grounds the brief; also spawned by the planner for its own search). |
 | `agents/researcher.md` | Sonnet web/docs research worker: searches and fetches, returns a sourced, dated summary; never writes to the repo. |
 | `agents/verifier.md` | Haiku test/lint/build runner (returns distilled pass/fail for self-verify). |
 | `agents/coder.md` | Sonnet worker: small, precisely-specced fixes. Gated by `reviewer`. |
-| `agents/engineer.md` | Opus 5 worker (pinned `claude-opus-5`): behavior-preserving structural refactors, tests-first on uncovered code. |
+| `agents/engineer.md` | Opus worker (the `opus` alias, always the newest Opus): behavior-preserving structural refactors, tests-first on uncovered code. |
 | `agents/test-writer.md` | Sonnet worker: characterization/regression tests; orchestrator escalates gnarly cases with a spawn-time model/effort override. |
 | `agents/reviewer.md` | Sonnet read-only gate: reviews worker diffs under a below-Fable driver (a Fable lead reads diffs itself); also the zero-Fable review tier and the degraded fallback when a warm-review handle is lost. |
 | `agents/smoke-tester.md` | Sonnet live prober: drives the real running app end-to-end post-deploy — green unit tests are not the finish line. |
-| `scripts/subagent-guard.ts` | The `PreToolUse` hook on the `Agent` tool: allows only the workers above, denies anything that would inherit the session's model. |
+| `scripts/subagent-guard.ts` | The `PreToolUse` hook on the `Agent` tool: under a Fable-led session it pins a spawn that would inherit to Opus, and denies `fork` and any Fable-tier spawn. |
 | `scripts/install-subagent-guard.ts` | Merges (and removes) that hook in `~/.claude/settings.json`, touching no other key. |
 | `subagent-guard.test.ts` | `bun test` over the guard's decision rule and the settings merge. |
 | `install.sh` / `uninstall.sh` | User-level install of the skill + agents into `~/.claude` (`$CLAUDE_CONFIG_DIR`), giving bare `/fable`. |
-| `.claude-plugin/` | Manifests for the alternative `/plugin` install (namespaced `/fable-bench:fable`). |
-
-## Plugin note (only if you chose the plugin path)
-
-The script install puts the agents at user level, where they resolve by bare name
-(`explorer`, `fable-planner`, `verifier`) — exactly what `SKILL.md` and
-`fable-planner.md` reference — so there's nothing to check.
-
-The **plugin** path is different: Claude Code namespaces plugin subagents (e.g.
-`fable-bench:explore`). After a plugin install, run one `/fable` on a throwaway
-task and confirm the discovery and verification workers resolve; if bare names
-don't, qualify them in `agents/fable-planner.md` (its nested `explorer` spawn) and
-in `SKILL.md`. This mismatch is the main reason the script install is recommended.
 
 ## License
 
