@@ -187,7 +187,7 @@ thinking is spent once, not twice.)
 | `agents/explorer.md` | Sonnet discovery worker (grounds the brief; also spawned by the planner for its own search). |
 | `agents/researcher.md` | Sonnet web/docs research worker: searches and fetches, returns a sourced, dated summary; never writes to the repo. |
 | `agents/verifier.md` | Haiku test/lint/build runner (returns distilled pass/fail for self-verify). |
-| `agents/coder.md` | Sonnet worker: small, precisely-specced fixes. Gated by `reviewer`. |
+| `agents/coder.md` | Opus worker (the `opus` alias): small, precisely-specced fixes. Gated by `reviewer`. |
 | `agents/engineer.md` | Opus worker (the `opus` alias, always the newest Opus): behavior-preserving structural refactors, tests-first on uncovered code. |
 | `agents/test-writer.md` | Sonnet worker: characterization/regression tests; orchestrator escalates gnarly cases with a spawn-time model/effort override. |
 | `agents/reviewer.md` | Sonnet read-only gate: reviews worker diffs under a below-Fable driver (a Fable lead reads diffs itself); also the zero-Fable review tier and the degraded fallback when a warm-review handle is lost. |
