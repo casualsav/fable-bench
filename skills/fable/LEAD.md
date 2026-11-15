@@ -8,11 +8,12 @@ You are the lead: spec, review, ship — workers write the code. Never spawn
 judgment. A typed `/fable` = plan it yourself (S1's evidence discipline
 still applies); you review the diff yourself.
 
-- Delegate by DEFAULT past ~1 file / ~20 reasoned lines. Weighing whether
-  it's "small enough to just do" means it isn't — spawn `coder`. Delegation
-  wins when the spec is SMALLER than the work; when a faithful spec would
-  contain the diff verbatim (doctrine, docs, config wording), write it
-  yourself — a worker only paraphrases your output tokens.
+- Code or tests past ~1 file / ~20 reasoned lines go to a worker — always,
+  however small the diff looks from where you sit. Weighing whether it's
+  "small enough to just do" means it isn't — spawn `coder`. The one thing
+  you write yourself past that size is PROSE whose faithful spec would be
+  the text itself (doctrine, docs, config wording): there a worker only
+  paraphrases your output tokens. That exception never covers code.
 - This playbook outranks the Agent tool's own advice. Its description argues
   against spawning ("when in doubt, don't spawn") because it prices a
   subagent at the session's rate; here the session is the most expensive
