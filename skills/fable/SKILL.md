@@ -1,12 +1,12 @@
 ---
 name: fable
-description: Have Claude Fable 5 plan the current task, then run an automatic warm diff-review after you execute. You (the below-Fable driver — Sonnet or Opus) gather the evidence and execute; Fable is the context-blind PLANNER — one plan engagement at the start (it writes the plan, unanchored by any draft of yours), one warm review at the end. Trigger on "/fable", "get a Fable plan", "consult Fable", or when the user wants Fable-planned execution of a nontrivial change. An explicit "critique my plan" request switches to the opt-in critique mode.
+description: Have Claude Fable plan the current task, then run an automatic warm diff-review after you execute. You (the below-Fable driver — Sonnet or Opus) gather the evidence and execute; Fable is the context-blind PLANNER — one plan engagement at the start (it writes the plan, unanchored by any draft of yours), one warm review at the end. Trigger on "/fable", "get a Fable plan", "consult Fable", or when the user wants Fable-planned execution of a nontrivial change. An explicit "critique my plan" request switches to the opt-in critique mode.
 ---
 
 # /fable — Fable plans, you execute
 
 You are the driver (below-Fable — Sonnet or Opus): you hold full session context, gather the
-evidence, execute, and make every micro-judgment yourself. Fable 5 is the PLANNER — stronger
+evidence, execute, and make every micro-judgment yourself. Fable is the PLANNER — stronger
 judgment, ZERO session context; it reads only what your brief points to, and it writes the
 plan unanchored by any draft of yours. It is never in the loop. Across one `/fable` you touch
 Fable twice — **one plan engagement** at the start, **one warm review** at
@@ -23,7 +23,7 @@ All Fable-touch budgets read as zero.
 cannot resume a subagent, `/fable` cannot review — there is no cold fallback. The preflight
 (S0.5) checks this before you spend the plan consult.
 
-**Native advisor first:** when `advisorModel: fable` is set (as on this install), a below-Fable driver
+**Native advisor first:** when `advisorModel: fable` is set, a below-Fable driver
 already has Fable judgment on tap mid-task — the advisor reads the FULL conversation
 server-side, no brief needed. For an ad-hoc second opinion, prefer asking for an advisor
 consult over invoking this skill. `/fable` remains the right tool when you want the full
@@ -76,7 +76,7 @@ partial-diff review (half-built code reads as false positives).
 
 **S5-alt — Orchestrated parallel execution (multi-item batches).** When the accepted plan is
 a batch of INDEPENDENT items, don't execute inline: fan out to workers in parallel —
-`coder` (Sonnet) for small specced fixes, `engineer` (Opus 5) for
+`coder` (Opus) for small specced fixes, `engineer` (Opus) for
 structural work and spec'd feature builds, `test-writer` FIRST wherever touched code lacks
 coverage. If the batch needed a fresh audit, fan that out too: parallel read-only `explorer`
 passes, each owning a slice small enough to read IN FULL — precise findings (file:line,
@@ -212,7 +212,7 @@ review only.
 
 ## Reading Fable's coded output
 Fable replies in a coded, exception-based format because its OUTPUT bills at 5× its input
-($50/MTok) — output is the expensive channel, and these codes are where the savings live:
+— output is the expensive channel, and these codes are where the savings live:
 - Codes (NIL/BOUND/RACE/AUTHZ/VALID/ERRPATH/INVARIANT/LEAK/TYPE/DEADCODE/REGRESS/PERF +
   plan-level SEQ/SCOPE/SIMPLER) are the SAME table Fable's prompt defines — expand each to
   its fault class yourself. A `FREE:` line is already plain.
@@ -249,7 +249,7 @@ Fable replies in a coded, exception-based format because its OUTPUT bills at 5×
 ## Never consult Fable about
 - **Intent ambiguity** — Fable has no access to the user's intent and would guess in
   output tokens, its most expensive channel. Two divergent readings where the wrong pick costs a redo: ask the USER one line.
-- **Silent-fallback domains.** Two things trip Fable 5's classifiers, and a refusal
+- **Silent-fallback domains.** Two things trip Fable's classifiers, and a refusal
   (`stop_reason: refusal`) silently falls back to Opus 4.8 — you get Opus judgment while
   believing you consulted Fable: (1) any brief wording that asks Fable to echo, transcribe,
   or explain its internal reasoning ("show your thinking / why you concluded X" — the coded

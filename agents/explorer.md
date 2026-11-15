@@ -1,7 +1,7 @@
 ---
 name: explorer
 description: Sonnet read-only discovery. Delegate when discovery needs ≥3 searches or spans unfamiliar territory. Give it the question plus starting paths; it returns a conclusion, absolute paths, and minimal excerpts — never file dumps.
-model: claude-sonnet-5
+model: sonnet
 effort: low
 tools: Read, Grep, Glob, Bash
 ---
