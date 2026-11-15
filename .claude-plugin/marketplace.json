@@ -1,0 +1,12 @@
+{
+  "name": "fable-bench",
+  "owner": { "name": "casualsav" },
+  "description": "fable-bench: Fable planning, a worker bench and the subagent model guard for Claude Code.",
+  "plugins": [
+    {
+      "name": "fable-bench",
+      "source": "./",
+      "description": "The /fable planning skill, worker subagents, Fable lead mode and the subagent model guard."
+    }
+  ]
+}

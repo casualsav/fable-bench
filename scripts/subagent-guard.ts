@@ -23,18 +23,23 @@
 // or without a `model`; elsewhere it passes untouched.
 //
 // The decision reads the tool input, the agent files (user-level under the
-// config dir, then project-level under the session's cwd, which win by name)
-// and the session transcript. No model call, no network.
+// config dir, then project-level under the session's cwd, which win by name,
+// then — in a /plugin install — the plugin's own, under their "<plugin>:"
+// names) and the session transcript. No model call, no network. An agent file
+// saying `model: inherit` pins nothing: Claude Code reads it as the parent's
+// model, which under a Fable parent is Fable.
 //
 // Canonical copy: fable-bench/scripts/subagent-guard.ts. Installed copy (the
 // one settings.json runs): ~/.claude/scripts/subagent-guard.ts — keep
-// byte-identical.
+// byte-identical. A /plugin install runs the canonical copy from the plugin
+// root via hooks/hooks.json, with CLAUDE_PLUGIN_ROOT set.
 import { readFileSync, openSync, readSync, fstatSync, closeSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 /**
  * Every agent type the session can spawn, by name. `model` is the frontmatter
- * pin; a type with no pin inherits the parent's model, which is the hazard.
+ * pin; a type with no pin (or `model: inherit`) inherits the parent's model,
+ * which is the hazard.
  */
 export type Roster = Map<string, { model?: string; fableBench?: boolean }>;
 
@@ -150,26 +155,43 @@ export function frontmatterField(text: string, key: string): string | undefined 
 export const frontmatterModel = (text: string) => frontmatterField(text, "model");
 
 /**
- * Agent files in <dir>/agents into the roster, keyed by frontmatter `name:`
- * (what Claude Code spawns by) or the filename stem without one. Each entry
- * replaces any earlier one of the same name outright, pin included.
+ * Agent files in <dir>/agents into the roster, keyed by `prefix` plus the
+ * frontmatter `name:` (what Claude Code spawns by) or the filename stem
+ * without one. Each entry replaces any earlier one of the same name outright,
+ * pin included. `model: inherit` means the parent's model to Claude Code, so
+ * it is recorded as no pin at all.
  */
-function readAgents(roster: Roster, dir: string): void {
+function readAgents(roster: Roster, dir: string, prefix = "", fableBench = false): void {
   let files: string[] = [];
   try {
     files = readdirSync(join(dir, "agents")).filter((f) => f.endsWith(".md"));
   } catch {
     /* no agents dir: every type inherits, and the parent check decides */
   }
+  const mark = fableBench ? { fableBench: true } : {};
   for (const f of files) {
     let text: string;
     try {
       text = readFileSync(join(dir, "agents", f), "utf8");
     } catch {
-      roster.set(f.slice(0, -3), {});
+      roster.set(prefix + f.slice(0, -3), { ...mark });
       continue;
     }
-    roster.set(frontmatterField(text, "name") ?? f.slice(0, -3), { model: frontmatterModel(text) });
+    const model = frontmatterModel(text);
+    roster.set(prefix + (frontmatterField(text, "name") ?? f.slice(0, -3)), {
+      model: model?.toLowerCase() === "inherit" ? undefined : model,
+      ...mark,
+    });
+  }
+}
+
+/** The `name` in <pluginRoot>/.claude-plugin/plugin.json — a plugin's spawn prefix — if readable. */
+function pluginName(pluginRoot: string): string | undefined {
+  try {
+    const name = JSON.parse(readFileSync(join(pluginRoot, ".claude-plugin", "plugin.json"), "utf8"))?.name;
+    return typeof name === "string" && name ? name : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -180,11 +202,16 @@ function readAgents(roster: Roster, dir: string): void {
  * replaces it, a project file with no `model:` un-pinning the name. The
  * manifest install.sh writes marks which names are fable-bench's, which is
  * what the denial message offers and what earns `fable-planner` its exemption.
+ * A /plugin install has neither the copies nor the manifest: its agents are
+ * read from <pluginRoot>/agents, keyed "<plugin name>:<agent>" because that is
+ * the only name Claude Code spawns a plugin agent by, and all are fable-bench's.
  */
-export function loadRoster(claudeDir: string, cwd?: string): Roster {
+export function loadRoster(claudeDir: string, cwd?: string, pluginRoot?: string): Roster {
   const roster: Roster = new Map();
   readAgents(roster, claudeDir);
   if (cwd) readAgents(roster, join(cwd, ".claude"));
+  const prefix = pluginRoot ? pluginName(pluginRoot) : undefined;
+  if (pluginRoot && prefix) readAgents(roster, pluginRoot, `${prefix}:`, true);
   try {
     for (const line of readFileSync(join(claudeDir, MANIFEST), "utf8").split("\n")) {
       const name = line.trim();
@@ -278,7 +305,8 @@ if (import.meta.main) {
   }
   const claudeDir = process.env.CLAUDE_CONFIG_DIR || join(process.env.HOME ?? "", ".claude");
   const cwd = typeof input.cwd === "string" && input.cwd ? input.cwd : undefined;
-  const d = decide(input, loadRoster(claudeDir, cwd), parentModel(input.transcript_path));
+  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || undefined;
+  const d = decide(input, loadRoster(claudeDir, cwd, pluginRoot), parentModel(input.transcript_path));
   if (!d.allow) console.log(denyPayload(d.reason));
   else if (d.updatedInput || d.notice) console.log(allowPayload(d));
   process.exit(0);
