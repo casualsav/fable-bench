@@ -1,0 +1,5 @@
+{
+  "name": "fable-bench",
+  "description": "The /fable planning skill, a bench of worker subagents, a lead mode for Fable-led sessions, and a guard that keeps subagents from inheriting Fable.",
+  "keywords": ["fable", "planning", "subagents", "workers", "lead", "model-guard"]
+}

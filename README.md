@@ -80,10 +80,40 @@ Claude Code resolves — nothing to re-pin when a model ships.
 User skills aren't namespaced, so the command is exactly `/fable`. Restart / reload your session after
 installing.
 
+**Or as a Claude Code plugin** — managed by `/plugin`, no script to run:
+
+```
+/plugin marketplace add casualsav/fable-bench
+/plugin install fable-bench@fable-bench
+```
+
+(From a shell: `claude plugin install fable-bench --marketplace casualsav/fable-bench`.)
+
+What differs from the script install:
+
+- Claude Code namespaces everything a plugin ships: the command is
+  `/fable-bench:fable` and the workers are `fable-bench:coder`,
+  `fable-bench:explorer` and so on. A session-start hook tells every session
+  so, since the kit's own files use the bare names.
+- Lead mode needs no `CLAUDE.md` block and is not a question: the same hook
+  carries the lead-mode block, which only a Fable-led session acts on.
+- The subagent guard arrives as a plugin hook (it still needs `bun`), and
+  knows the plugin's workers by their prefixed names.
+- The Fable efforts are the shipped ones (plan `high`, review `medium`).
+
+Use one of the two installs, not both.
+
 ## Uninstall
 
 ```
 ./fable-bench/uninstall.sh
+```
+
+Or, for the plugin install:
+
+```
+/plugin uninstall fable-bench@fable-bench
+/plugin marketplace remove fable-bench
 ```
 
 `uninstall.sh` also removes the subagent guard's entry from
@@ -196,6 +226,8 @@ thinking is spent once, not twice.)
 | `scripts/install-subagent-guard.ts` | Merges (and removes) that hook in `~/.claude/settings.json`, touching no other key. |
 | `subagent-guard.test.ts` | `bun test` over the guard's decision rule and the settings merge. |
 | `install.sh` / `uninstall.sh` | User-level install of the skill + agents into `~/.claude` (`$CLAUDE_CONFIG_DIR`), giving bare `/fable`. |
+| `.claude-plugin/` + `hooks/hooks.json` | The plugin install: manifests, and the hooks that run the guard and the session-start context. |
+| `scripts/plugin-context.ts` | Session-start hook of the plugin install: tells the session the `fable-bench:` prefix and carries the lead-mode block. |
 
 ## License
 

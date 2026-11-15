@@ -1,0 +1,13 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/scripts/plugin-context.ts\"" }] }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Agent|Task",
+        "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/scripts/subagent-guard.ts\"" }]
+      }
+    ]
+  }
+}

@@ -94,7 +94,10 @@ touch "$CMD"
 awk '$0=="<!-- fable-auto:begin -->"{skip=1} !skip{print} $0=="<!-- fable-auto:end -->"{skip=0}' "$CMD" > "$CMD.tmp" && mv "$CMD.tmp" "$CMD"
 awk -v b="$BEGIN_S" -v e="$END_S" '$0==b{skip=1} !skip{print} $0==e{skip=0}' "$CMD" > "$CMD.tmp" && mv "$CMD.tmp" "$CMD"
 if [ "$LEAD" = yes ]; then
-  { printf '%s\n' "$BEGIN_S"; sed "s|@CONFIG_DIR@|$CLAUDE|g" "$SRC/CLAUDE-fable-bench.md"; printf '%s\n' "$END_S"; } >> "$CMD"
+  # awk, not sed: the config dir is inserted as a literal, whatever characters it holds.
+  { printf '%s\n' "$BEGIN_S"
+    DIR="$CLAUDE" awk '{ while ((i = index($0, "@CONFIG_DIR@"))) $0 = substr($0, 1, i - 1) ENVIRON["DIR"] substr($0, i + 12); print }' "$SRC/CLAUDE-fable-bench.md"
+    printf '%s\n' "$END_S"; } >> "$CMD"
 fi
 
 # Lite variant has no auto layer: clear any stale marker so nothing implies it.

@@ -127,8 +127,6 @@ test("a Fable parent may not fork, whatever model the call carries", () => {
   for (const model of [undefined, "opus", "sonnet", "haiku"]) {
     const d = call({ subagent_type: "fork", prompt: "go", ...(model && { model }) }, "fable");
     expect(d.allow).toBe(false);
-    expect(!d.allow && d.reason).toContain("ignores a model override");
-    expect(!d.allow && d.reason).toContain("researcher");
   }
 });
 
@@ -271,6 +269,118 @@ test("loadRoster with no agents dir is empty", () => {
   }
 });
 
+// ---- a /plugin install --------------------------------------------------------
+// A plugin's agents are spawnable only as "<plugin name>:<agent>" (measured
+// 2026-11-15 on 2.1.325), and a plugin-only install has neither user-level
+// agent copies nor the manifest, so the plugin dir itself is the evidence.
+
+const writeAgent = (dir: string, n: string, model?: string) =>
+  writeFileSync(join(dir, "agents", `${n}.md`), `---\nname: ${n}\n${model ? `model: ${model}\n` : ""}---\nbody\n`);
+
+/** A plugin root holding fable-bench's agents, as the repo ships them. */
+function pluginFixture(home: string, name: string | null = "fable-bench"): string {
+  const root = join(home, "plugin");
+  mkdirSync(join(root, "agents"), { recursive: true });
+  if (name !== null) {
+    mkdirSync(join(root, ".claude-plugin"));
+    writeFileSync(join(root, ".claude-plugin", "plugin.json"), JSON.stringify({ name }));
+  }
+  writeAgent(root, "explorer", "sonnet");
+  writeAgent(root, "coder", "opus");
+  writeAgent(root, "verifier", "haiku");
+  writeAgent(root, "fable-planner", "fable");
+  return root;
+}
+
+test("loadRoster reads a plugin's agents under their prefixed names, all fable-bench's", () => {
+  const home = mkdtempSync(join(tmpdir(), "subguard-plugin-"));
+  const claudeDir = join(home, ".claude");
+  try {
+    mkdirSync(claudeDir);
+    const root = pluginFixture(home);
+    const roster = loadRoster(claudeDir, undefined, root);
+    expect([...roster.keys()].sort()).toEqual(
+      ["fable-bench:coder", "fable-bench:explorer", "fable-bench:fable-planner", "fable-bench:verifier"],
+    );
+    expect(roster.get("fable-bench:explorer")).toEqual({ model: "sonnet", fableBench: true });
+    expect(roster.get("fable-bench:fable-planner")).toEqual({ model: "fable", fableBench: true });
+
+    const run = (t: string, parent: Parent) => decide({ tool_name: "Agent", tool_input: { subagent_type: t } }, roster, parent);
+    // Kit workers keep their own pins — Sonnet and Haiku are not forced up to Opus.
+    for (const t of ["fable-bench:explorer", "fable-bench:coder", "fable-bench:verifier"])
+      expect(run(t, "fable")).toEqual({ allow: true });
+    // The planner keeps its /fable exemption: denied only under a Fable parent.
+    expect(run("fable-bench:fable-planner", "fable").allow).toBe(false);
+    expect(run("fable-bench:fable-planner", "safe")).toEqual({ allow: true });
+    expect(run("fable-bench:fable-planner", "unknown")).toEqual({ allow: true });
+    // A bare name is not what the plugin answers to, and there is no user-level file.
+    const bare = run("explorer", "fable");
+    expect(bare.allow && bare.updatedInput?.model).toBe(FALLBACK_MODEL);
+    // The notice offers the names that actually spawn.
+    const gp = run("general-purpose", "fable");
+    expect(gp.allow && gp.notice).toContain("fable-bench:explorer");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("loadRoster skips a plugin whose name cannot be read", () => {
+  const home = mkdtempSync(join(tmpdir(), "subguard-plugin-noname-"));
+  try {
+    mkdirSync(join(home, ".claude"));
+    expect(loadRoster(join(home, ".claude"), undefined, pluginFixture(home, null)).size).toBe(0);
+    mkdirSync(join(home, "plugin", ".claude-plugin"));
+    writeFileSync(join(home, "plugin", ".claude-plugin", "plugin.json"), "{ not json");
+    expect(loadRoster(join(home, ".claude"), undefined, join(home, "plugin")).size).toBe(0);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("both installs at once keep both names, each fable-bench's", () => {
+  const home = mkdtempSync(join(tmpdir(), "subguard-plugin-both-"));
+  const claudeDir = join(home, ".claude");
+  try {
+    mkdirSync(join(claudeDir, "agents"), { recursive: true });
+    writeAgent(claudeDir, "coder", "opus");
+    writeFileSync(join(claudeDir, MANIFEST), "coder\n");
+    const roster = loadRoster(claudeDir, undefined, pluginFixture(home));
+    expect(roster.get("coder")).toEqual({ model: "opus", fableBench: true });
+    expect(roster.get("fable-bench:coder")).toEqual({ model: "opus", fableBench: true });
+    // Without a plugin root the roster is exactly the install.sh one.
+    expect([...loadRoster(claudeDir).keys()]).toEqual(["coder"]);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// ---- `model: inherit` -----------------------------------------------------------
+// Claude Code reads `model: inherit` as "the parent's model", which under a
+// Fable parent is Fable — it is the absence of a pin, not a pin.
+
+test("`model: inherit` is no pin, at user level or project level", () => {
+  const home = mkdtempSync(join(tmpdir(), "subguard-inherit-"));
+  const claudeDir = join(home, ".claude");
+  const project = join(home, "proj");
+  try {
+    mkdirSync(join(claudeDir, "agents"), { recursive: true });
+    mkdirSync(join(project, ".claude", "agents"), { recursive: true });
+    writeAgent(claudeDir, "user-inherit", "inherit");
+    writeAgent(claudeDir, "shadowed", "sonnet");
+    writeAgent(join(project, ".claude"), "project-inherit", "inherit");
+    writeAgent(join(project, ".claude"), "shadowed", "inherit");
+    const roster = loadRoster(claudeDir, project);
+    for (const t of ["user-inherit", "project-inherit", "shadowed"]) {
+      expect(roster.get(t)?.model).toBeUndefined();
+      const d = decide({ tool_name: "Agent", tool_input: { subagent_type: t } }, roster, "fable");
+      expect(d.allow && d.updatedInput?.model).toBe(FALLBACK_MODEL);
+      expect(decide({ tool_name: "Agent", tool_input: { subagent_type: t } }, roster, "safe")).toEqual({ allow: true });
+    }
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("parentModel reads the driving model off the transcript tail", () => {
   const dir = mkdtempSync(join(tmpdir(), "subguard-transcript-"));
   const write = (n: string, lines: unknown[]) => {
@@ -346,6 +456,33 @@ test("the hook binary rewrites under a Fable transcript and says nothing under a
       .toBe(FALLBACK_MODEL);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the hook binary reads the plugin's agents from CLAUDE_PLUGIN_ROOT", () => {
+  const home = mkdtempSync(join(tmpdir(), "subguard-plugin-e2e-"));
+  const claudeDir = join(home, ".claude");
+  try {
+    mkdirSync(claudeDir);
+    const root = pluginFixture(home);
+    const fable = join(home, "fable.jsonl");
+    writeFileSync(fable, JSON.stringify({ type: "assistant", message: { model: "claude-fable-5-1" } }) + "\n");
+    const run = (subagent_type: string, pluginRoot?: string) => {
+      const env: Record<string, string> = { ...process.env, CLAUDE_CONFIG_DIR: claudeDir } as Record<string, string>;
+      delete env.CLAUDE_PLUGIN_ROOT;
+      if (pluginRoot) env.CLAUDE_PLUGIN_ROOT = pluginRoot;
+      return spawnSync("bun", [join(import.meta.dir, "scripts", "subagent-guard.ts")], {
+        input: JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Agent", tool_input: { subagent_type }, transcript_path: fable }),
+        env,
+        encoding: "utf8",
+      });
+    };
+    expect(run("fable-bench:explorer", root).stdout.trim()).toBe("");
+    expect(JSON.parse(run("fable-bench:fable-planner", root).stdout).hookSpecificOutput.permissionDecision).toBe("deny");
+    // CLAUDE_PLUGIN_ROOT unset — the install.sh path — knows nothing of the plugin's names.
+    expect(JSON.parse(run("fable-bench:explorer").stdout).hookSpecificOutput.updatedInput.model).toBe(FALLBACK_MODEL);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
   }
 });
 

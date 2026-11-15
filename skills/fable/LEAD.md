@@ -19,7 +19,8 @@ still applies); you review the diff yourself.
   model in the fleet and the workers are the cheap ones, so the default
   flips. What it says about briefs holds: a worker knows only its prompt.
 - Every spawn names a worker from `agents/` — `coder`, `engineer`, `explorer`,
-  `researcher`, `test-writer`, `smoke-tester`, `verifier`. NEVER spawn
+  `researcher`, `test-writer`, `smoke-tester`, `verifier` (from a plugin
+  install each carries the plugin's prefix: `fable-bench:coder`). NEVER spawn
   `general-purpose`, `fork`, or any type that pins no model: it runs on the
   lead's model, so a research fan-out runs at Fable rates. A `fork` cannot
   even be overridden — it always runs on your model with your whole context
