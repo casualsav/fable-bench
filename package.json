@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "scripts": {
+    "lint": "biome lint . && scripts/lint-shell.sh"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.8"
+  }
+}
